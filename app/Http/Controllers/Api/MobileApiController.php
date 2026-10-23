@@ -7,8 +7,10 @@ use App\Http\Requests\StoreSoilSampleRequest;
 use App\Models\CropProfile;
 use App\Models\IotDevice;
 use App\Models\SensorReading;
+use App\Models\SoilAssessment;
 use App\Models\SoilSample;
 use App\Models\User;
+use App\Services\CropSuitabilityService;
 use App\Services\SoilAssessmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,7 +21,8 @@ use Symfony\Component\HttpFoundation\Response;
 class MobileApiController extends Controller
 {
     public function __construct(
-        protected SoilAssessmentService $soilAssessmentService
+        protected SoilAssessmentService $soilAssessmentService,
+        protected CropSuitabilityService $cropSuitabilityService
     ) {}
 
     /**
@@ -121,15 +124,17 @@ class MobileApiController extends Controller
             })->toArray();
         }
 
-        // Active Device Status
-        $device = IotDevice::where('device_uid', 'ESP32-01')->first() ?? IotDevice::first();
+        // Active Device Status (most recently active real device, honest empty state when empty)
+        $device = IotDevice::whereNotNull('last_seen_at')->latest('last_seen_at')->first() ?? IotDevice::latest('id')->first();
         $deviceData = $device ? [
             'id' => $device->id,
             'uid' => $device->device_uid,
-            'name' => $device->name ?? 'SoilSense ESP32 Probe',
-            'is_active' => (bool) $device->is_active,
+            'name' => $device->name,
+            'status' => $device->status,
+            'location' => $device->location,
+            'is_demo' => (bool) $device->is_demo,
             'last_seen' => $device->last_seen_at?->diffForHumans(),
-            'battery_level' => $device->battery_level ?? 95,
+            'last_seen_at' => $device->last_seen_at?->toIso8601String(),
         ] : null;
 
         // Recent Samples
@@ -332,14 +337,11 @@ class MobileApiController extends Controller
         $validated = $request->validated();
 
         $sample = DB::transaction(function () use ($validated) {
-            $count = SoilSample::count() + 1;
-            $sampleCode = 'SS-' . date('Y') . '-' . str_pad($count, 3, '0', STR_PAD_LEFT);
-
             $user = User::first();
             $sourceType = ($validated['is_demo'] ?? true) ? 'demo' : 'live';
 
             $sample = SoilSample::create([
-                'sample_code' => $sampleCode,
+                'sample_code' => 'SS-' . date('Y') . '-TEMP-' . uniqid('', true),
                 'name' => $validated['name'],
                 'location' => $validated['location'] ?? 'Mobile Field Sample',
                 'collected_at' => Carbon::parse($validated['collected_at']),
@@ -347,12 +349,17 @@ class MobileApiController extends Controller
                 'source_type' => $sourceType,
                 'assessment_status' => 'preliminary',
                 'notes' => $validated['notes'] ?? null,
-                'operator_name' => $user?->name ?? 'Mobile Operator',
+                'operator_name' => $user?->name,
                 'user_id' => $user?->id,
                 'device_id' => $validated['device_id'] ?? IotDevice::first()?->id,
             ]);
 
+            $sample->update([
+                'sample_code' => 'SS-' . date('Y') . '-' . str_pad($sample->id, 3, '0', STR_PAD_LEFT),
+            ]);
+
             // If reading data was provided, record sensor reading
+            $reading = null;
             if (isset($validated['ph']) || isset($validated['moisture']) || isset($validated['temperature']) || isset($validated['ec'])) {
                 $reading = SensorReading::create([
                     'soil_sample_id' => $sample->id,
@@ -367,12 +374,20 @@ class MobileApiController extends Controller
                     'is_valid' => true,
                     'data_source' => $sourceType,
                 ]);
-
-                // Run automated agronomic assessment
-                $this->soilAssessmentService->evaluateSample($sample, $reading);
             }
 
-            return $sample->fresh(['latestReading', 'latestAssessment.cropEvaluations.crop']);
+            // Run automated agronomic assessment
+            $this->soilAssessmentService->evaluateSample($sample, $reading);
+
+            $freshSample = $sample->fresh(['latestReading', 'latestAssessment.cropEvaluations.crop']);
+            $sampleData = $freshSample->toArray();
+            $sampleData['crop_evaluations'] = $freshSample->latestAssessment?->cropEvaluations->map(function ($eval) {
+                $evalArr = $eval->toArray();
+                $evalArr['crop_name'] = $eval->crop?->name;
+                return $evalArr;
+            })->values()->all() ?? [];
+
+            return $sampleData;
         });
 
         return response()->json([
@@ -380,5 +395,211 @@ class MobileApiController extends Controller
             'message' => 'Soil sample recorded and assessed successfully.',
             'data' => $sample,
         ], Response::HTTP_CREATED);
+    }
+
+    /**
+     * Get Soil Assessment and Crop Suitability Evaluations
+     */
+    public function showAssessment(int|string $id): JsonResponse
+    {
+        $assessment = SoilAssessment::with([
+            'soilSample.latestReading',
+            'cropEvaluations.crop',
+        ])->find($id);
+
+        if (!$assessment) {
+            return response()->json([
+                'success' => false,
+                'message' => "Soil assessment not found.",
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $sample = $assessment->soilSample;
+        $evaluations = $assessment->cropEvaluations->map(function ($eval) {
+            $data = $eval->toArray();
+            $data['crop_name'] = $eval->crop?->name;
+            return $data;
+        })->values();
+
+        $data = $assessment->toArray();
+        $data['sample'] = $sample;
+        $data['crop_evaluations'] = $evaluations;
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
+
+    /**
+     * Historical Assessment Reports List (Paginated like samples)
+     */
+    public function reports(): JsonResponse
+    {
+        $reports = SoilSample::with(['latestReading', 'latestAssessment', 'device'])
+            ->latest('collected_at')
+            ->paginate(15);
+
+        return response()->json([
+            'success' => true,
+            'data' => $reports,
+        ]);
+    }
+
+    /**
+     * Report Detail for a specific sample
+     */
+    public function showReport(string $id): JsonResponse
+    {
+        $sample = SoilSample::where('sample_code', $id)
+            ->orWhere('id', is_numeric($id) ? (int) $id : 0)
+            ->with([
+                'latestReading',
+                'latestAssessment.cropEvaluations.crop.requirements',
+                'device',
+            ])
+            ->first();
+
+        if (!$sample) {
+            return response()->json([
+                'success' => false,
+                'message' => "Report for sample '{$id}' not found.",
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $reading = $sample->latestReading;
+        $assessment = $sample->latestAssessment;
+
+        $measurements = [
+            'ph' => [
+                'name' => 'Soil pH',
+                'value' => $reading && $reading->ph !== null ? (float) number_format($reading->ph, 2) : null,
+                'display_value' => $reading && $reading->ph !== null ? number_format($reading->ph, 1) : 'Pending',
+                'unit' => 'pH',
+                'badge' => $reading && $reading->ph !== null ? 'In range' : 'Not measured',
+                'tone' => $reading && $reading->ph !== null ? 'green' : 'gray',
+                'meta' => $reading && $reading->ph !== null ? 'Calibrated reading' : 'No sensor data',
+                'last_updated' => $reading?->recorded_at?->diffForHumans(),
+            ],
+            'moisture' => [
+                'name' => 'Soil Moisture',
+                'value' => $reading && $reading->moisture !== null ? (float) round($reading->moisture) : null,
+                'display_value' => $reading && $reading->moisture !== null ? (string) round($reading->moisture) : 'Pending',
+                'unit' => $reading?->moisture_unit ?? '%',
+                'badge' => $reading && $reading->moisture_unit === 'raw index' ? 'Uncalibrated' : ($reading && $reading->moisture !== null ? 'Optimal' : 'Missing'),
+                'tone' => $reading && $reading->moisture_unit === 'raw index' ? 'amber' : ($reading && $reading->moisture !== null ? 'green' : 'gray'),
+                'meta' => $reading && $reading->moisture_unit === 'raw index' ? 'Raw analog sensor index' : 'Calibrated volumetric moisture',
+                'last_updated' => $reading?->recorded_at?->diffForHumans(),
+            ],
+            'temperature' => [
+                'name' => 'Soil Temperature',
+                'value' => $reading && $reading->temperature !== null ? (float) round($reading->temperature, 1) : null,
+                'display_value' => $reading && $reading->temperature !== null ? (string) round($reading->temperature) : 'Pending',
+                'unit' => '°C',
+                'badge' => $reading && $reading->temperature !== null ? 'Available' : 'Missing',
+                'tone' => $reading && $reading->temperature !== null ? 'green' : 'gray',
+                'meta' => $reading && $reading->temperature !== null ? 'Thermal sensor valid' : 'No sensor data',
+                'last_updated' => $reading?->recorded_at?->diffForHumans(),
+            ],
+            'ec' => [
+                'name' => 'Electrical Conductivity',
+                'value' => $reading && $reading->ec !== null ? (float) number_format($reading->ec, 2) : null,
+                'display_value' => $reading && $reading->ec !== null ? number_format($reading->ec, 2) : 'Pending',
+                'unit' => $reading?->ec_unit ?? 'mS/cm',
+                'badge' => $reading && $reading->ec !== null ? 'Normal Salinity' : 'Not measured',
+                'tone' => $reading && $reading->ec !== null ? 'green' : 'gray',
+                'meta' => $reading && $reading->ec !== null ? 'EC measurement valid' : 'Awaiting sensor reading',
+                'last_updated' => $reading?->recorded_at?->diffForHumans(),
+            ],
+        ];
+
+        $cropEvaluations = $assessment?->cropEvaluations->map(function ($eval) {
+            $crop = $eval->crop;
+            $data = $eval->toArray();
+            $data['crop_name'] = $crop?->name;
+            $data['scientific_name'] = $crop?->scientific_name;
+            $data['image_url'] = $crop?->image_url;
+            return $data;
+        }) ?? [];
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'sample' => $sample,
+                'reading' => $reading,
+                'assessment' => $assessment,
+                'crop_evaluations' => $cropEvaluations,
+                'recommendations' => [
+                    'summary' => $assessment?->summary,
+                    'recommended_next_steps' => $assessment?->recommended_next_steps,
+                    'limitations' => $assessment?->limitations,
+                    'missing_information' => $assessment?->missing_information,
+                ],
+                'measurements' => $measurements,
+            ],
+        ]);
+    }
+
+    /**
+     * List of registered IoT devices with latest telemetry
+     */
+    public function devices(): JsonResponse
+    {
+        $devices = IotDevice::with('latestReading')->get()->map(function ($device) {
+            return [
+                'id' => $device->id,
+                'device_uid' => $device->device_uid,
+                'name' => $device->name,
+                'status' => $device->status,
+                'location' => $device->location,
+                'is_demo' => (bool) $device->is_demo,
+                'last_seen_at' => $device->last_seen_at?->toIso8601String(),
+                'last_seen_ago' => $device->last_seen_at?->diffForHumans(),
+                'created_at' => $device->created_at?->toIso8601String(),
+                'updated_at' => $device->updated_at?->toIso8601String(),
+                'latest_reading' => $device->latestReading,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'count' => $devices->count(),
+            'data' => $devices,
+        ]);
+    }
+
+    /**
+     * Single IoT device detail with latest telemetry
+     */
+    public function showDevice(string $id): JsonResponse
+    {
+        $device = IotDevice::with('latestReading')
+            ->where('id', is_numeric($id) ? (int) $id : 0)
+            ->orWhere('device_uid', $id)
+            ->first();
+
+        if (!$device) {
+            return response()->json([
+                'success' => false,
+                'message' => "Device '{$id}' not found.",
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $device->id,
+                'device_uid' => $device->device_uid,
+                'name' => $device->name,
+                'status' => $device->status,
+                'location' => $device->location,
+                'is_demo' => (bool) $device->is_demo,
+                'last_seen_at' => $device->last_seen_at?->toIso8601String(),
+                'last_seen_ago' => $device->last_seen_at?->diffForHumans(),
+                'created_at' => $device->created_at?->toIso8601String(),
+                'updated_at' => $device->updated_at?->toIso8601String(),
+                'latest_reading' => $device->latestReading,
+            ],
+        ]);
     }
 }
