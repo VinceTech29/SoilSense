@@ -24,14 +24,14 @@
 // -----------------------------------------------------------------------------
 // 1. NETWORK & API CONFIGURATION
 // -----------------------------------------------------------------------------
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID     = "placeholder";
+const char* WIFI_PASSWORD = "placeholder";
 
 // Change this to your computer's local IP address (e.g. 192.168.1.100:8000)
 // When testing locally on the same WiFi network, find your IP using ipconfig
 const char* SERVER_URL    = "http://192.168.1.100:8000/api/v1/readings";
 
-// Authentication Bearer Token (must match API_ESP32_SECRET in Laravel .env)
+// Authentication Bearer Token: each device has its own token, stored SHA-256-hashed in iot_devices.api_token_hash (seeded by DeviceSeeder), sent as a Bearer token
 const char* API_TOKEN     = "demo-esp32-token-2025";
 
 // Target soil sample identifier (registered in SoilSense) and device identifier

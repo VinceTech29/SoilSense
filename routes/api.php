@@ -30,6 +30,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/crops/{name}', [MobileApiController::class, 'cropDetail'])->name('api.v1.mobile.crops.detail');
         Route::get('/samples', [MobileApiController::class, 'samples'])->name('api.v1.mobile.samples');
         Route::post('/samples', [MobileApiController::class, 'storeSample'])->name('api.v1.mobile.samples.store');
+        Route::get('/assessments/{id}', [MobileApiController::class, 'showAssessment'])->name('api.v1.mobile.assessments.show');
+        Route::get('/reports', [MobileApiController::class, 'reports'])->name('api.v1.mobile.reports');
+        Route::get('/reports/{id}', [MobileApiController::class, 'showReport'])->name('api.v1.mobile.reports.show');
+        Route::get('/devices', [MobileApiController::class, 'devices'])->name('api.v1.mobile.devices');
+        Route::get('/devices/{id}', [MobileApiController::class, 'showDevice'])->name('api.v1.mobile.devices.show');
     });
 });
 

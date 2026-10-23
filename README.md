@@ -20,7 +20,7 @@ SoilSense is an academic IoT and decision-support web application that ingests s
 
 ## Core Capabilities
 1. **IoT Ingestion API**:
-   - Secure endpoint (`POST /api/v1/sensors/readings`) with device token authentication.
+   - Secure endpoint (`POST /api/v1/readings`) with device token authentication.
    - Strict sensor data validation, anomaly bounds checking, and calibration offset support.
    - Clear distinction between live hardware telemetry and simulated demonstration data (`is_demo`).
 2. **Soil Assessment Engine**:
@@ -91,11 +91,32 @@ Access the application in your browser at `http://127.0.0.1:8000`.
 
 ## Project Structure
 - `app/Services/SoilAssessmentService.php`: Core soil evaluation and limiting factor identification.
-- `app/Services/CropRecommendationService.php`: Crop requirement comparison and suitability scoring.
-- `app/Http/Controllers/Api/SensorReadingController.php`: IoT REST API endpoint for ESP32.
-- `app/Http/Controllers/DashboardController.php`: Dashboard and web interface controller.
+- `app/Services/CropSuitabilityService.php`: Crop requirement comparison and suitability scoring.
+- `app/Http/Controllers/Api/SensorReadingApiController.php`: IoT REST API endpoint for ESP32.
+- `app/Http/Controllers/Api/MobileApiController.php`: Mobile REST API endpoints for Flutter integration.
+- `app/Http/Controllers/SoilSenseController.php`: Dashboard and web interface controller.
 - `resources/views/`: Blade views styled with Tailwind CSS.
 - `database/seeders/CropSeeder.php`: Documented crop requirements (FAO standards).
+
+---
+
+## Mobile API
+The SoilSense mobile REST API (`/api/v1/mobile/*`) provides structured JSON endpoints consumed by the Flutter mobile application:
+
+| HTTP Method | Endpoint | Route Name | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/v1/mobile/dashboard` | `api.v1.mobile.dashboard` | Structured measurement cards, active device status, recommended crops, and recent samples |
+| `GET` | `/api/v1/mobile/telemetry/latest` | `api.v1.mobile.telemetry.latest` | Most recent sensor reading with calibration metadata |
+| `GET` | `/api/v1/mobile/telemetry/history` | `api.v1.mobile.telemetry.history` | Telemetry series data for mobile chart widgets |
+| `GET` | `/api/v1/mobile/crops` | `api.v1.mobile.crops` | Crop catalog with pH, moisture, and temperature requirements |
+| `GET` | `/api/v1/mobile/crops/{name}` | `api.v1.mobile.crops.detail` | Individual crop profile details and reference thresholds |
+| `GET` | `/api/v1/mobile/samples` | `api.v1.mobile.samples` | Paginated soil sample history (15 per page) |
+| `POST` | `/api/v1/mobile/samples` | `api.v1.mobile.samples.store` | Record a new soil sample and execute automated assessment |
+| `GET` | `/api/v1/mobile/assessments/{id}` | `api.v1.mobile.assessments.show` | Assessment details, soil sample, and crop suitability evaluations |
+| `GET` | `/api/v1/mobile/reports` | `api.v1.mobile.reports` | Paginated sample assessment reports (15 per page) |
+| `GET` | `/api/v1/mobile/reports/{id}` | `api.v1.mobile.reports.show` | Comprehensive sample report with assessment, crop suitability, and measurements |
+| `GET` | `/api/v1/mobile/devices` | `api.v1.mobile.devices` | Registered IoT devices with latest sensor telemetry |
+| `GET` | `/api/v1/mobile/devices/{id}` | `api.v1.mobile.devices.show` | Single IoT device telemetry details and connection status |
 
 ---
 
