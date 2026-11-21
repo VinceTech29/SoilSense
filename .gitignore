@@ -22,3 +22,8 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+ml-service/data/*.csv
+ml-service/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
