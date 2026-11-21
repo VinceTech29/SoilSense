@@ -593,3 +593,96 @@ footer > small { grid-column: 1 / -1; padding-top: 20px; border-top: 1px solid #
   .form-grid { grid-template-columns: 1fr; }
   .form-grid .full { grid-column: auto; }
 }
+
+/* Fertilizer Recommendation Module & N-P-K UI */
+.notice.success { background: var(--green-50); border-color: #bbf7d0; color: var(--green-800); }
+.notice.success span { color: #166534; }
+
+.fertilizer-card { padding: 24px; margin-bottom: 28px; }
+.fertilizer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.fertilizer-head h2 { margin-bottom: 4px; font-size: 22px; }
+.fertilizer-head p { margin: 0; font-size: 12px; }
+.fertilizer-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.fertilizer-hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
+.fert-stat { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #f8fafc; }
+.fert-stat.primary { background: var(--green-50); border-color: #bbf7d0; }
+.fert-stat span { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+.fert-stat b { display: block; font-family: Manrope, sans-serif; font-size: 24px; font-weight: 800; color: #0f172a; letter-spacing: -.03em; line-height: 1.2; }
+.fert-stat.primary b { color: var(--green-800); }
+.fert-stat small { display: block; margin-top: 5px; font-size: 11px; color: var(--muted); }
+
+.npk-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 15px; border: 1px solid var(--line); border-radius: 11px; background: #fbfdfb; margin-bottom: 18px; }
+.npk-pills { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.npk-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 8px; background: white; border: 1px solid var(--line); font-size: 12px; }
+.npk-pill strong { font-family: Manrope, sans-serif; color: #0f172a; }
+.npk-pill .dot-n { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; }
+.npk-pill .dot-p { width: 8px; height: 8px; border-radius: 50%; background: #2563eb; }
+.npk-pill .dot-k { width: 8px; height: 8px; border-radius: 50%; background: #d97706; }
+
+.rain-banner { display: flex; align-items: flex-start; gap: 13px; padding: 14px 16px; border-radius: 11px; border: 1px solid; margin-bottom: 18px; }
+.rain-banner > svg { flex: 0 0 auto; margin-top: 2px; }
+.rain-banner-body { flex: 1; min-width: 0; }
+.rain-banner-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.rain-banner-top b { font-size: 13px; }
+.rain-banner-body p { margin: 0; font-size: 12px; line-height: 1.5; }
+.rain-meta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 11px; font-weight: 600; }
+.rain-banner.proceed { background: var(--green-50); border-color: #86efac; color: var(--green-900); }
+.rain-banner.proceed p, .rain-banner.proceed .rain-meta { color: #166534; }
+.rain-banner.delay { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+.rain-banner.delay p, .rain-banner.delay .rain-meta { color: #991b1b; }
+.rain-banner.manual { background: var(--amber-bg); border-color: #fde68a; color: #92400e; }
+.rain-banner.manual p, .rain-banner.manual .rain-meta { color: #78350f; }
+
+.fertilizer-grid { display: grid; grid-template-columns: 1fr 1.25fr; gap: 16px; margin-bottom: 18px; }
+.fert-panel { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.fert-panel h3 { font-size: 14px; margin-bottom: 12px; color: #0f172a; }
+
+.pred-list { display: grid; gap: 11px; }
+.pred-row-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 5px; }
+.pred-row-head b { color: #1e293b; }
+.pred-row-head span { font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pred-track { height: 8px; background: #eef2f6; border-radius: 99px; overflow: hidden; }
+.pred-fill { height: 100%; border-radius: 99px; background: var(--green-600); }
+.pred-fill.secondary { background: #94a3b8; }
+
+.split-table { width: 100%; border-collapse: collapse; white-space: normal; }
+.split-table th { padding: 8px 10px; font-size: 10px; }
+.split-table td { padding: 9px 10px; font-size: 12px; }
+.split-note { margin: 10px 0 0; font-size: 11px; color: var(--muted); }
+
+.npk-empty-state { padding: 18px; border: 1px dashed #cbd5e1; border-radius: 12px; background: #f8fafc; margin-bottom: 18px; }
+.npk-empty-state h3 { font-size: 16px; margin-bottom: 6px; color: #0f172a; }
+.npk-empty-state p { margin-bottom: 14px; font-size: 12px; }
+
+.npk-update-details { border: 1px solid var(--line); border-radius: 11px; background: #f8fafc; padding: 12px 16px; margin-bottom: 18px; }
+.npk-update-details summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--green-800); list-style: none; display: flex; align-items: center; justify-content: space-between; }
+.npk-update-details summary::-webkit-details-marker { display: none; }
+.npk-form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+.npk-form-grid label { display: grid; gap: 5px; font-size: 11px; font-weight: 700; color: #475569; }
+.npk-form-grid input, .npk-form-grid select { width: 100%; min-width: 0; }
+.npk-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.field-error { color: var(--red); font-size: 11px; font-weight: 600; margin-top: 2px; }
+
+.agronomic-disclaimer { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 10px; background: #f8fafc; border: 1px solid var(--line); color: #475569; font-size: 11px; line-height: 1.5; }
+.agronomic-disclaimer svg { flex: 0 0 auto; color: var(--amber); margin-top: 1px; }
+.agronomic-disclaimer b { color: #1e293b; }
+
+/* Analysis optional N-P-K block */
+.npk-optional-panel { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.npk-optional-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.npk-optional-head h3 { margin: 0; font-size: 14px; color: #0f172a; }
+.npk-optional-panel > p { margin: 0 0 12px; font-size: 11px; }
+
+/* History N-P-K Trend Chart */
+.npk-trend-card { padding: 20px; margin-bottom: 18px; }
+.npk-trend-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.npk-trend-head h2 { margin-bottom: 4px; }
+.npk-trend-head p { margin: 0; font-size: 12px; }
+.npk-chart-container { position: relative; height: 260px; width: 100%; }
+
+@media (max-width: 900px) {
+  .fertilizer-hero { grid-template-columns: 1fr; }
+  .fertilizer-grid { grid-template-columns: 1fr; }
+  .npk-form-grid { grid-template-columns: 1fr; }
+}

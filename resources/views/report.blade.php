@@ -20,6 +20,16 @@
         </div>
     </div>
 
+    @if(session('success'))
+        <div class="notice success">
+            <x-icon name="check" />
+            <div>
+                <b>Update saved</b>
+                <span>{{ session('success') }}</span>
+            </div>
+        </div>
+    @endif
+
     <!-- Preliminary Warning Notice -->
     <div class="notice demo">
         <x-icon name="warning" />
@@ -121,6 +131,359 @@
                 <p>{{ $assessment?->recommended_next_steps ?? 'Calibrate the moisture sensor and test EC, nutrients, texture, organic matter, and drainage. Confirm the crop variety and local planting calendar with your municipal agriculturist.' }}</p>
             </div>
             <a href="{{ route('analysis') }}" class="btn btn-primary">Run another soil test</a>
+        </div>
+    </section>
+
+    <!-- Fertilizer Recommendation Section -->
+    @php
+        $hasNpkValues = $reading
+            && $reading->nitrogen !== null
+            && $reading->phosphorus !== null
+            && $reading->potassium !== null;
+        $gradeLabel = $fertilizerRecommendation
+            ? config("fertilizer.grades.{$fertilizerRecommendation->predicted_fertilizer}.label")
+            : null;
+        $confidencePct = $fertilizerRecommendation
+            ? (int) round($fertilizerRecommendation->confidence * 100)
+            : null;
+        $isLowConfidence = $fertilizerRecommendation
+            && $fertilizerRecommendation->confidence < ($lowConfidenceThreshold ?? 0.55);
+        $topPredictions = is_array($fertilizerRecommendation?->top_predictions)
+            ? array_slice($fertilizerRecommendation->top_predictions, 0, 3)
+            : [];
+        $splitSchedule = is_array($fertilizerRecommendation?->split_schedule)
+            ? $fertilizerRecommendation->split_schedule
+            : [];
+        $rainAdvisory = is_array($fertilizerRecommendation?->rain_advisory)
+            ? $fertilizerRecommendation->rain_advisory
+            : null;
+        $rainStatus = $rainAdvisory['status'] ?? 'manual_check';
+        $rainApiFailed = (bool) ($rainAdvisory['api_failed'] ?? false);
+        $npkSource = $reading?->npk_source ?? 'manual';
+        $npkSourceTone = match ($npkSource) {
+            'sensor' => 'green',
+            'manual' => 'blue',
+            default => 'amber',
+        };
+    @endphp
+
+    <section class="card fertilizer-card" id="fertilizerRecommendationSection">
+        <div class="fertilizer-head">
+            <div>
+                <span class="section-kicker">Fertilizer decision support</span>
+                <h2>Fertilizer Recommendation</h2>
+                <p>ML-classified fertilizer grade paired with deterministic agronomic dosage calculation and 72-hour rainfall screening.</p>
+            </div>
+            @if($fertilizerRecommendation)
+                <div class="fertilizer-badges">
+                    <x-badge :tone="$isLowConfidence ? 'amber' : 'green'">
+                        {{ $confidencePct }}% confidence
+                    </x-badge>
+                    @if($isLowConfidence)
+                        <x-badge tone="amber">Low confidence</x-badge>
+                    @endif
+                    @if($fertilizerRecommendation->fallback_used)
+                        <x-badge tone="amber">Rule-based fallback</x-badge>
+                    @endif
+                    <x-badge tone="gray" :dot="false">Model: {{ $fertilizerRecommendation->model_version }}</x-badge>
+                </div>
+            @else
+                <div class="fertilizer-badges">
+                    <x-badge tone="gray">Awaiting N-P-K telemetry</x-badge>
+                </div>
+            @endif
+        </div>
+
+        @if($fertilizerRecommendation)
+            <!-- Primary Recommendation Summary -->
+            <div class="fertilizer-hero">
+                <div class="fert-stat">
+                    <span>Target crop</span>
+                    <b>{{ $fertilizerRecommendation->crop }}</b>
+                    <small>{{ $sample->soil_type ? $sample->soil_type . ' soil profile' : 'Default Loamy soil profile' }}</small>
+                </div>
+                <div class="fert-stat primary">
+                    <span>Predicted fertilizer</span>
+                    <b>{{ $fertilizerRecommendation->predicted_fertilizer }}</b>
+                    <small>{{ $gradeLabel ?? 'Recommended nutrient product' }}</small>
+                </div>
+                <div class="fert-stat">
+                    <span>Total dosage rate</span>
+                    <b>{{ number_format($fertilizerRecommendation->dose_kg_ha, 1) }} kg/ha</b>
+                    <small>
+                        @if(count($splitSchedule) > 1)
+                            Split across {{ count($splitSchedule) }} applications
+                        @elseif(count($splitSchedule) === 1)
+                            Single application schedule
+                        @else
+                            Soil supply meets crop target
+                        @endif
+                    </small>
+                </div>
+            </div>
+
+            <!-- Current N-P-K Reading Badges -->
+            @if($hasNpkValues)
+                <div class="npk-strip">
+                    <div class="npk-pills">
+                        <span class="npk-pill">
+                            <i class="dot-n"></i>
+                            Nitrogen (N): <strong>{{ number_format((float) $reading->nitrogen, 1) }} mg/kg</strong>
+                        </span>
+                        <span class="npk-pill">
+                            <i class="dot-p"></i>
+                            Phosphorus (P): <strong>{{ number_format((float) $reading->phosphorus, 1) }} mg/kg</strong>
+                        </span>
+                        <span class="npk-pill">
+                            <i class="dot-k"></i>
+                            Potassium (K): <strong>{{ number_format((float) $reading->potassium, 1) }} mg/kg</strong>
+                        </span>
+                    </div>
+                    <x-badge :tone="$npkSourceTone">
+                        NPK source: {{ $npkSource }}
+                    </x-badge>
+                </div>
+            @endif
+
+            <!-- Rain Guard 72h Advisory Banner -->
+            @if($rainAdvisory)
+                @if($rainStatus === 'proceed' && !$rainApiFailed)
+                    <div class="rain-banner proceed" role="status">
+                        <x-icon name="check" :size="18" />
+                        <div class="rain-banner-body">
+                            <div class="rain-banner-top">
+                                <x-badge tone="green">Proceed</x-badge>
+                                <b>Rain Guard 72h Advisory — Proceed with Application</b>
+                            </div>
+                            <p>{{ $rainAdvisory['message'] ?? '72-hour rainfall outlook is favorable for fertilizer application.' }}</p>
+                            <div class="rain-meta">
+                                @if(isset($rainAdvisory['precipitation_sum_mm']))
+                                    <span>72h Rain Sum: {{ number_format((float) $rainAdvisory['precipitation_sum_mm'], 1) }} mm</span>
+                                @endif
+                                @if(isset($rainAdvisory['max_precipitation_probability']))
+                                    <span>Max Rain Probability: {{ $rainAdvisory['max_precipitation_probability'] }}%</span>
+                                @endif
+                                @if(!empty($rainAdvisory['location_label']))
+                                    <span>Location: {{ $rainAdvisory['location_label'] }}</span>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                @elseif($rainStatus === 'delay' && !$rainApiFailed)
+                    <div class="rain-banner delay" role="alert">
+                        <x-icon name="warning" :size="18" />
+                        <div class="rain-banner-body">
+                            <div class="rain-banner-top">
+                                <x-badge tone="red">Delay Application</x-badge>
+                                <b>Rain Guard 72h Advisory — Delay Application</b>
+                            </div>
+                            <p>{{ $rainAdvisory['message'] ?? 'Heavy rain risk detected over the next 72 hours. Delay fertilizer application to prevent runoff.' }}</p>
+                            <div class="rain-meta">
+                                @if(isset($rainAdvisory['precipitation_sum_mm']))
+                                    <span>72h Rain Sum: {{ number_format((float) $rainAdvisory['precipitation_sum_mm'], 1) }} mm</span>
+                                @endif
+                                @if(isset($rainAdvisory['max_precipitation_probability']))
+                                    <span>Max Rain Probability: {{ $rainAdvisory['max_precipitation_probability'] }}%</span>
+                                @endif
+                                @if(!empty($rainAdvisory['suggested_dry_window']['label']))
+                                    <span>Suggested Dry Window: {{ $rainAdvisory['suggested_dry_window']['label'] }}</span>
+                                @endif
+                                @if(!empty($rainAdvisory['location_label']))
+                                    <span>Location: {{ $rainAdvisory['location_label'] }}</span>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                @else
+                    <div class="rain-banner manual" role="status">
+                        <x-icon name="alert" :size="18" />
+                        <div class="rain-banner-body">
+                            <div class="rain-banner-top">
+                                <x-badge tone="amber">Check Weather Manually</x-badge>
+                                <b>Rain Guard 72h Advisory — Check Weather Manually</b>
+                            </div>
+                            <p>{{ $rainAdvisory['message'] ?? 'Live 72-hour rainfall forecast is unavailable. Check local weather conditions manually before field application.' }}</p>
+                            @if(!empty($rainAdvisory['location_label']))
+                                <div class="rain-meta">
+                                    <span>Location: {{ $rainAdvisory['location_label'] }}</span>
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                @endif
+            @endif
+
+            <!-- Top-3 Predictions & Split Application Schedule -->
+            <div class="fertilizer-grid">
+                <div class="fert-panel">
+                    <h3>Top-3 fertilizer predictions</h3>
+                    @if(!empty($topPredictions))
+                        <div class="pred-list">
+                            @foreach($topPredictions as $idx => $prediction)
+                                @php
+                                    $probPct = round(((float) ($prediction['probability'] ?? 0)) * 100, 1);
+                                @endphp
+                                <div>
+                                    <div class="pred-row-head">
+                                        <b>{{ $idx + 1 }}. {{ $prediction['fertilizer'] ?? 'Unknown' }}</b>
+                                        <span>{{ number_format($probPct, 1) }}%</span>
+                                    </div>
+                                    <div class="pred-track">
+                                        <div class="pred-fill {{ $idx > 0 ? 'secondary' : '' }}" style="width: {{ min(100, max(0, $probPct)) }}%;"></div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @else
+                        <p style="margin: 0; font-size: 12px;">No probability breakdown recorded for this prediction.</p>
+                    @endif
+                </div>
+
+                <div class="fert-panel">
+                    <h3>Split application schedule</h3>
+                    @if(count($splitSchedule) > 0)
+                        <div class="table-scroll">
+                            <table class="split-table">
+                                <thead>
+                                    <tr>
+                                        <th>App #</th>
+                                        <th>Day Offset</th>
+                                        <th>Stage</th>
+                                        <th>Dose (kg/ha)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($splitSchedule as $step)
+                                        <tr>
+                                            <td><b>#{{ $step['application_number'] ?? $loop->iteration }}</b></td>
+                                            <td>{{ ($step['day_offset'] ?? 0) === 0 ? 'Day 0' : 'Day +' . $step['day_offset'] }}</td>
+                                            <td>{{ $step['stage'] ?? 'Scheduled application' }}</td>
+                                            <td><b>{{ number_format((float) ($step['dose_kg_ha'] ?? 0), 1) }} kg/ha</b></td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        @if(count($splitSchedule) === 1)
+                            <p class="split-note">Single application — total rate is within the per-application cap, so splitting is not required.</p>
+                        @endif
+                    @else
+                        <p style="margin: 0; font-size: 12px;">No supplementary application required — estimated soil nutrient supply already meets or exceeds the target crop demand (0.0 kg/ha).</p>
+                    @endif
+                </div>
+            </div>
+
+            <!-- Update Manual N-P-K Form -->
+            <details class="npk-update-details" {{ $errors->hasAny(['nitrogen', 'phosphorus', 'potassium', 'soil_type', 'crop']) ? 'open' : '' }}>
+                <summary>
+                    <span>Update Manual N-P-K &amp; Recalculate Recommendation</span>
+                    <x-icon name="chevron" :size="15" />
+                </summary>
+
+                <form method="POST" action="{{ route('report.npk.store', ['id' => $sample->sample_code]) }}" id="updateManualNpkForm">
+                    @csrf
+                    <div class="npk-form-grid">
+                        <label>
+                            <span>Nitrogen (N, mg/kg) *</span>
+                            <input type="number" name="nitrogen" step="0.1" min="0" max="500" value="{{ old('nitrogen', $reading?->nitrogen) }}" required placeholder="0 – 500">
+                            @error('nitrogen') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                        <label>
+                            <span>Phosphorus (P, mg/kg) *</span>
+                            <input type="number" name="phosphorus" step="0.1" min="0" max="500" value="{{ old('phosphorus', $reading?->phosphorus) }}" required placeholder="0 – 500">
+                            @error('phosphorus') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                        <label>
+                            <span>Potassium (K, mg/kg) *</span>
+                            <input type="number" name="potassium" step="0.1" min="0" max="500" value="{{ old('potassium', $reading?->potassium) }}" required placeholder="0 – 500">
+                            @error('potassium') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                        <label>
+                            <span>Soil type (optional)</span>
+                            <select name="soil_type">
+                                <option value="">Keep current ({{ $sample->soil_type ?? 'Loamy' }})</option>
+                                @foreach(['Loamy', 'Sandy', 'Silt', 'Clay'] as $soilOpt)
+                                    <option value="{{ $soilOpt }}" {{ old('soil_type', $sample->soil_type) === $soilOpt ? 'selected' : '' }}>{{ $soilOpt }}</option>
+                                @endforeach
+                            </select>
+                            @error('soil_type') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                        <label>
+                            <span>Target crop override (optional)</span>
+                            <select name="crop">
+                                <option value="">Auto (top suitable crop)</option>
+                                @foreach(($cropOptions ?? []) as $cropOpt)
+                                    <option value="{{ $cropOpt }}" {{ old('crop', $fertilizerRecommendation->crop) === $cropOpt ? 'selected' : '' }}>{{ $cropOpt }}</option>
+                                @endforeach
+                            </select>
+                            @error('crop') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                    </div>
+                    <div class="npk-form-actions">
+                        <small>Valid physical range: 0–500 mg/kg per macronutrient. Submitted values are tagged as <b>manual</b>.</small>
+                        <button type="submit" class="btn btn-primary">Update N-P-K &amp; Recalculate</button>
+                    </div>
+                </form>
+            </details>
+        @else
+            <!-- Empty / Missing-NPK State + Inline Manual N-P-K Form -->
+            <div class="npk-empty-state">
+                <h3>N-P-K macronutrient values required</h3>
+                <p>This soil sample does not have Nitrogen (N), Phosphorus (P), and Potassium (K) readings yet. Enter lab or field kit N-P-K values (mg/kg) below to generate a fertilizer type prediction and deterministic kg/ha dosage plan.</p>
+
+                <form method="POST" action="{{ route('report.npk.store', ['id' => $sample->sample_code]) }}" id="manualNpkEntryForm">
+                    @csrf
+                    <div class="npk-form-grid">
+                        <label>
+                            <span>Nitrogen (N, mg/kg) *</span>
+                            <input type="number" name="nitrogen" step="0.1" min="0" max="500" value="{{ old('nitrogen', $reading?->nitrogen) }}" required placeholder="e.g. 45">
+                            @error('nitrogen') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                        <label>
+                            <span>Phosphorus (P, mg/kg) *</span>
+                            <input type="number" name="phosphorus" step="0.1" min="0" max="500" value="{{ old('phosphorus', $reading?->phosphorus) }}" required placeholder="e.g. 32">
+                            @error('phosphorus') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                        <label>
+                            <span>Potassium (K, mg/kg) *</span>
+                            <input type="number" name="potassium" step="0.1" min="0" max="500" value="{{ old('potassium', $reading?->potassium) }}" required placeholder="e.g. 58">
+                            @error('potassium') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                        <label>
+                            <span>Soil type (optional)</span>
+                            <select name="soil_type">
+                                <option value="">Default ({{ $sample->soil_type ?? 'Loamy' }})</option>
+                                @foreach(['Loamy', 'Sandy', 'Silt', 'Clay'] as $soilOpt)
+                                    <option value="{{ $soilOpt }}" {{ old('soil_type', $sample->soil_type) === $soilOpt ? 'selected' : '' }}>{{ $soilOpt }}</option>
+                                @endforeach
+                            </select>
+                            @error('soil_type') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                        <label>
+                            <span>Target crop override (optional)</span>
+                            <select name="crop">
+                                <option value="">Auto (top suitable crop)</option>
+                                @foreach(($cropOptions ?? []) as $cropOpt)
+                                    <option value="{{ $cropOpt }}" {{ old('crop') === $cropOpt ? 'selected' : '' }}>{{ $cropOpt }}</option>
+                                @endforeach
+                            </select>
+                            @error('crop') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                    </div>
+                    <div class="npk-form-actions">
+                        <small>Valid physical range: 0–500 mg/kg per macronutrient. Submitted values are tagged as <b>manual</b>.</small>
+                        <button type="submit" class="btn btn-primary">Save N-P-K &amp; Generate Recommendation</button>
+                    </div>
+                </form>
+            </div>
+        @endif
+
+        <!-- Visible Agronomic Disclaimer -->
+        <div class="agronomic-disclaimer" role="note">
+            <x-icon name="warning" :size="16" />
+            <span>
+                <b>Agronomic Advisory Disclaimer:</b> Fertilizer recommendations are advisory only. The ML fertilizer classifier is trained on a synthetic reference dataset, and dosage calculations use standard regional crop demand targets rather than site-specific field trials. Always verify fertilizer products, application rates, and timing with a local agronomist or certified soil laboratory before field application.
+            </span>
         </div>
     </section>
 

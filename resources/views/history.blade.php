@@ -28,6 +28,42 @@
         @endif
     </form>
 
+    <!-- N-P-K Macronutrient Trend Chart -->
+    @php
+        $trendPayload = $npkTrend ?? [
+            'labels' => [],
+            'nitrogen' => [],
+            'phosphorus' => [],
+            'potassium' => [],
+            'has_data' => false,
+        ];
+    @endphp
+    <section class="card npk-trend-card" id="npkTrendSection">
+        <div class="npk-trend-head">
+            <div>
+                <span class="section-kicker">Macronutrient trends</span>
+                <h2>Soil N-P-K Trend Lines (mg/kg)</h2>
+                <p>Chronological Nitrogen (N), Phosphorus (P), and Potassium (K) concentrations across recorded soil samples.</p>
+            </div>
+            <div class="npk-pills">
+                <span class="npk-pill"><i class="dot-n"></i> Nitrogen (N)</span>
+                <span class="npk-pill"><i class="dot-p"></i> Phosphorus (P)</span>
+                <span class="npk-pill"><i class="dot-k"></i> Potassium (K)</span>
+            </div>
+        </div>
+
+        @if($trendPayload['has_data'])
+            <div class="npk-chart-container">
+                <canvas id="npkTrendChart" data-trend='@json($trendPayload)' aria-label="Soil N-P-K concentration trend chart" role="img"></canvas>
+            </div>
+        @else
+            <div class="npk-empty-state" style="margin-bottom: 0;">
+                <canvas id="npkTrendChart" data-trend='@json($trendPayload)' style="display: none;"></canvas>
+                <p style="margin: 0;">No N-P-K macronutrient readings are recorded for the current filter. Enter N-P-K values on any assessment report or new soil sample to view trend lines.</p>
+            </div>
+        @endif
+    </section>
+
     <!-- History Samples Table -->
     <section class="card table-card history-table">
         <div class="table-scroll">
@@ -40,6 +76,7 @@
                         <th>Location</th>
                         <th>Device</th>
                         <th>Valid data</th>
+                        <th>N-P-K (mg/kg)</th>
                         <th>Assessment</th>
                         <th>Candidate crops</th>
                         <th></th>
@@ -60,6 +97,14 @@
                             <td>{{ $sample['device'] }}</td>
                             <td><b>{{ $sample['valid_count'] }}</b></td>
                             <td>
+                                <b>{{ $sample['npk_summary'] ?? 'Not recorded' }}</b>
+                                @if(!empty($sample['npk_source']))
+                                    <small>{{ ucfirst($sample['npk_source']) }}{{ !empty($sample['fertilizer']) ? ' · ' . $sample['fertilizer'] : '' }}</small>
+                                @else
+                                    <small>No N-P-K data</small>
+                                @endif
+                            </td>
+                            <td>
                                 <x-badge :tone="$sample['assessment'] === 'Reviewed' ? 'green' : 'amber'">
                                     {{ $sample['assessment'] }}
                                 </x-badge>
@@ -71,7 +116,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" style="text-align: center; padding: 24px; color: var(--muted);">
+                            <td colspan="10" style="text-align: center; padding: 24px; color: var(--muted);">
                                 No soil samples matched the selected filters.
                             </td>
                         </tr>
