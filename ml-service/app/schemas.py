@@ -20,13 +20,10 @@ SOIL_TYPE_ALIASES: dict[str, SoilTypeLiteral] = {
 
 
 class PredictRequest(BaseModel):
-    """Input sensor & sample payload aligned with SoilSense telemetry and samples."""
+    """Input 4-sensor & crop/soil payload aligned with SoilSense telemetry."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    n: float = Field(..., ge=0.0, le=500.0, description="Nitrogen level (mg/kg or kg/ha)")
-    p: float = Field(..., ge=0.0, le=500.0, description="Phosphorus level (mg/kg or kg/ha)")
-    k: float = Field(..., ge=0.0, le=500.0, description="Potassium level (mg/kg or kg/ha)")
     ph: float = Field(..., ge=0.0, le=14.0, description="Soil pH [0.0, 14.0]")
     ec: float = Field(
         ...,

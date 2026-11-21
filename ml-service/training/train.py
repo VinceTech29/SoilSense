@@ -1,10 +1,13 @@
 """Reproducible training pipeline for SoilSense fertilizer recommendation.
 
 Trains a single scikit-learn Pipeline (ColumnTransformer + classifier) on the
-9 SoilSense-aligned features to predict ``Recommended_Fertilizer`` (WHAT
-fertilizer, never HOW MUCH). Also runs a 9-feature vs 19-feature ablation
-comparison, evaluates class-imbalance handling, checks overfitting/leakage,
-and exports ``model.joblib``, ``metadata.json``, and ``REPORT.md``.
+6 SoilSense-available features (4 hardware sensors: Soil_pH,
+Electrical_Conductivity, Soil_Moisture, Temperature + Crop_Type, Soil_Type —
+NO Nitrogen, Phosphorus, or Potassium) to predict ``Recommended_Fertilizer``
+(WHAT fertilizer, never HOW MUCH). Also runs a diagnostic 6-feature vs
+19-feature ablation comparison when all 19 raw CSV columns exist, evaluates
+class-imbalance handling, checks overfitting/leakage, and exports
+``model.joblib``, ``metadata.json``, and ``REPORT.md``.
 """
 
 from __future__ import annotations
@@ -45,24 +48,24 @@ except Exception:  # pragma: no cover - optional dependency fallback
 
 TARGET_COLUMN = "Recommended_Fertilizer"
 
-NUMERIC_FEATURES_9 = [
-    "Nitrogen_Level",
-    "Phosphorus_Level",
-    "Potassium_Level",
+NUMERIC_FEATURES_6 = [
     "Soil_pH",
     "Electrical_Conductivity",
     "Soil_Moisture",
     "Temperature",
 ]
 
-CATEGORICAL_FEATURES_9 = [
+CATEGORICAL_FEATURES_6 = [
     "Crop_Type",
     "Soil_Type",
 ]
 
-PRODUCTION_FEATURES_9 = NUMERIC_FEATURES_9 + CATEGORICAL_FEATURES_9
+PRODUCTION_FEATURES_6 = NUMERIC_FEATURES_6 + CATEGORICAL_FEATURES_6
 
-EXCLUDED_FEATURES_10 = [
+EXCLUDED_FEATURES_13 = [
+    "Nitrogen_Level",
+    "Phosphorus_Level",
+    "Potassium_Level",
     "Organic_Carbon",
     "Humidity",
     "Rainfall",
@@ -95,30 +98,38 @@ SYNTHETIC_DATASET_NOTES = {
     "generation_mechanism": (
         "100% synthetic dataset with independent uniform features (max pairwise |r| < 0.03). "
         "8,642/10,000 rows (86.42%) follow an exact 6-rule deterministic cascade: "
-        "(1) N < 60 -> Urea; (2) P < 40 -> DAP; (3) K < 40 -> MOP; "
-        "(4) pH < 5.5 -> Compost; (5) pH > 7.8 -> Zinc Sulphate; "
-        "(6) Crop_Growth_Stage == 'Vegetative' -> NPK. "
+        "(1) N < 60 -> Urea (2,902 rows, 29.02%); "
+        "(2) P < 40 -> DAP (2,738 rows, 27.38%); "
+        "(3) K < 40 -> MOP (1,198 rows, 11.98%) — together N, P, and K drive 6,838/10,000 rows (68.38%); "
+        "(4) pH < 5.5 -> Compost (798 rows, 7.98%); "
+        "(5) pH > 7.8 -> Zinc Sulphate (553 rows, 5.53%); "
+        "(6) Crop_Growth_Stage == 'Vegetative' -> NPK (453 rows, 4.53%). "
         "The remaining 1,358 rows (13.58%) are sampled approximately uniformly across all 7 classes."
     ),
+    "npk_rule_share": 0.6838,
     "bayes_ceiling_19_features": 0.8852,
-    "bayes_ceiling_9_features": 0.883,
-    "bayes_ceiling_9_features_rules_only_approx": 0.84,
+    "bayes_ceiling_6_features": 0.3205,
     "accuracy_caveat": (
-        "Because Crop_Growth_Stage is excluded from the 9 SoilSense-aligned production features "
-        "and the 1,358 fallback rows are irreducible uniform label noise, the 9-feature pipeline "
-        "loses rule #6 (Crop_Growth_Stage == 'Vegetative' -> NPK): pure deterministic-rule "
-        "coverage drops from 86.42% to 81.89% (~84% if predicting uniformly on fallback, or "
-        "~88.3% Bayes ceiling when defaulting the non-rule region to NPK, which drops NPK "
-        "precision to ~0.33). Do NOT overstate overall accuracy as real-world agronomic accuracy; "
-        "the model reproduces the synthetic training distribution rather than field trial outcomes."
+        "SoilSense collects 4 soil sensors (Soil_pH, Electrical_Conductivity, Soil_Moisture, "
+        "Temperature) plus Crop_Type and Soil_Type — Nitrogen, Phosphorus, and Potassium are NOT "
+        "measured or supplied. Removing N, P, and K drops the first three cascade rules that drove "
+        "68.38% of labels in this synthetic CSV, collapsing the theoretical Bayes-optimal accuracy "
+        "ceiling from ~88.52% (19 features) to ~32.05% (6 features). On this synthetic dataset, "
+        "the 6-feature model primarily learns the pH rules (pH < 5.5 -> Compost at ~31.8% posterior; "
+        "pH > 7.8 -> Zinc Sulphate at ~31.6% posterior) plus the neutral-pH majority class prior "
+        "(Urea at ~32.3% posterior for 5.5 <= pH <= 7.8). Because top-class probabilities stay "
+        "around 0.30-0.34 (below the default 0.55 low_confidence threshold), low_confidence=true "
+        "flags these predictions honestly so downstream deterministic agronomic guidance can assist. "
+        "Do NOT overstate accuracy; replace this synthetic dataset with real 4-sensor regional "
+        "field-trial data whenever available."
     ),
     "excluded_feature_rationale": (
-        "10 columns (Organic_Carbon, Humidity, Rainfall, Crop_Growth_Stage, Season, "
-        "Irrigation_Type, Previous_Crop, Region, Fertilizer_Used_Last_Season, Yield_Last_Season) "
-        "are excluded from the production 9-feature pipeline because SoilSense ESP32 hardware and "
-        "soil sample workflows only supply NPK, pH, EC, moisture, temperature, crop type, and soil "
-        "type. Excluding unavailable fields ensures production inference never fabricates missing "
-        "sensor values."
+        "13 columns (Nitrogen_Level, Phosphorus_Level, Potassium_Level, Organic_Carbon, Humidity, "
+        "Rainfall, Crop_Growth_Stage, Season, Irrigation_Type, Previous_Crop, Region, "
+        "Fertilizer_Used_Last_Season, Yield_Last_Season) are excluded from the production 6-feature "
+        "pipeline because SoilSense ESP32 hardware and soil sample workflows only supply 4 soil "
+        "sensors (pH, EC, moisture, temperature) plus crop type and soil type. Excluding unavailable "
+        "fields ensures production inference never fabricates missing N-P-K or lab values."
     ),
 }
 
@@ -279,10 +290,10 @@ def get_candidate_specs(random_state: int) -> list[dict[str, Any]]:
             "production_eligible": True,
             "class_weight": None,
             "factory": lambda: GradientBoostingClassifier(
-                n_estimators=100,
+                n_estimators=80,
                 learning_rate=0.05,
-                max_depth=3,
-                min_samples_leaf=20,
+                max_depth=1,
+                min_samples_leaf=50,
                 subsample=0.8,
                 random_state=random_state,
             ),
@@ -297,10 +308,10 @@ def get_candidate_specs(random_state: int) -> list[dict[str, Any]]:
                 "production_eligible": False,
                 "class_weight": None,
                 "factory": lambda: XGBClassifier(
-                    n_estimators=150,
-                    learning_rate=0.08,
-                    max_depth=4,
-                    subsample=0.9,
+                    n_estimators=100,
+                    learning_rate=0.05,
+                    max_depth=2,
+                    subsample=0.8,
                     colsample_bytree=0.9,
                     eval_metric="mlogloss",
                     random_state=random_state,
@@ -373,7 +384,7 @@ def select_best_candidate(
 ) -> tuple[dict[str, Any], str]:
     """Select best production-eligible model balancing CV macro-F1, CV accuracy, and low gap."""
     eligible = [r for r in results if r["production_eligible"]]
-    # Composite score balances CV macro-F1 & CV accuracy while penalizing overfitting gaps.
+
     def selection_score(r: dict[str, Any]) -> float:
         acc_gap_penalty = max(0.0, r["train_cv_accuracy_gap"] - 0.02) * 0.5
         f1_gap_penalty = max(0.0, r["train_cv_macro_f1_gap"] - 0.05) * 0.35
@@ -383,15 +394,16 @@ def select_best_candidate(
     cw_note = (
         f"class_weight={best['class_weight']}"
         if best["class_weight"]
-        else "class_weight=None (avoids inflating false positives on uniform fallback noise)"
+        else "class_weight=None (preserves honest posterior probabilities instead of amplifying noise)"
     )
     rationale = (
         f"Selected {best['model_name']} among production-eligible string-native sklearn Pipelines "
         f"(cv_accuracy={best['cv_accuracy_mean']:.4f}, cv_macro_f1={best['cv_macro_f1_mean']:.4f}, "
         f"train_cv_accuracy_gap={best['train_cv_accuracy_gap']:.4f}, "
         f"train_cv_macro_f1_gap={best['train_cv_macro_f1_gap']:.4f}; {cw_note}). "
-        "Balances CV accuracy near the synthetic 9-feature ceiling with macro-F1 while "
-        "penalizing train-vs-CV overfitting gaps."
+        "Matches the 6-feature synthetic Bayes ceiling (~0.3205) via pH threshold splits "
+        "(pH < 5.5 -> Compost, pH > 7.8 -> Zinc Sulphate) and class priors with minimal "
+        "train-vs-CV overfitting gap."
     )
     return best, rationale
 
@@ -404,7 +416,7 @@ def aggregate_feature_importances(
     y_test: pd.Series,
     random_state: int,
 ) -> dict[str, Any]:
-    """Aggregate transformed estimator importances back to the 9 input features + permutation check."""
+    """Aggregate transformed estimator importances back to the 6 input features + permutation check."""
     preprocessor: ColumnTransformer = pipeline.named_steps["preprocessor"]
     classifier = pipeline.named_steps["classifier"]
 
@@ -466,7 +478,7 @@ def resolve_dataset_origin(
         return True
     if dataset_origin == "field":
         return False
-    has_all_extra_columns = all(col in df.columns for col in EXCLUDED_FEATURES_10)
+    has_all_extra_columns = all(col in df.columns for col in EXCLUDED_FEATURES_13)
     return has_all_extra_columns and data_path.name.lower() == "fertilizer_recommendation.csv"
 
 
@@ -479,39 +491,40 @@ def build_dataset_notes(data_path: Path, is_synthetic: bool) -> dict[str, Any]:
         "dataset_origin": "field",
         "source_filename": data_path.name,
         "notes": (
-            "Trained on a custom field/laboratory soil-test CSV using the 9 SoilSense "
-            "production features. Validate predictions against regional agronomic trials "
-            "and accredited soil laboratory recommendations."
+            "Trained on a custom field/laboratory soil-test CSV using the 6 SoilSense "
+            "4-sensor production features (Soil_pH, Electrical_Conductivity, Soil_Moisture, "
+            "Temperature, Crop_Type, Soil_Type — no N-P-K). Validate predictions against "
+            "regional agronomic trials and accredited soil laboratory recommendations."
         ),
     }
 
 
-def run_ablation_19_vs_9(
+def run_ablation_19_vs_6(
     df: pd.DataFrame,
     best_model_name: str,
     specs: list[dict[str, Any]],
     train_idx: np.ndarray,
     cv: StratifiedKFold,
 ) -> dict[str, Any]:
-    """Compare 9-feature CV against all-19-feature CV when all extra raw columns exist."""
-    extra_present = [c for c in EXCLUDED_FEATURES_10 if c in df.columns]
+    """Compare 6-feature CV against all-19-feature CV when all 13 excluded columns exist."""
+    extra_present = [c for c in EXCLUDED_FEATURES_13 if c in df.columns]
     all_features = [c for c in df.columns if c != TARGET_COLUMN]
 
-    if len(extra_present) < len(EXCLUDED_FEATURES_10):
+    if len(extra_present) < len(EXCLUDED_FEATURES_13):
         return {
             "estimator": best_model_name,
             "features_19_count": len(all_features),
-            "features_9_count": len(PRODUCTION_FEATURES_9),
+            "features_6_count": len(PRODUCTION_FEATURES_6),
             "excluded_features": extra_present,
             "ablation_skipped": True,
             "ablation_skipped_reason": (
-                "Input CSV does not contain all 10 extra synthetic/historical columns; "
-                "9-vs-19 feature ablation skipped."
+                "Input CSV does not contain all 13 extra synthetic/N-P-K/historical columns; "
+                "6-vs-19 feature ablation skipped."
             ),
             "cv_19_features": {},
             "note": (
                 "19-feature ablation skipped because this dataset supplies only the "
-                "9 SoilSense production features (or lacks all 10 extra columns)."
+                "6 SoilSense 4-sensor production features (or lacks all 13 excluded columns)."
             ),
         }
 
@@ -526,8 +539,8 @@ def run_ablation_19_vs_9(
     return {
         "estimator": best_model_name,
         "features_19_count": len(all_features),
-        "features_9_count": len(PRODUCTION_FEATURES_9),
-        "excluded_features": EXCLUDED_FEATURES_10,
+        "features_6_count": len(PRODUCTION_FEATURES_6),
+        "excluded_features": EXCLUDED_FEATURES_13,
         "ablation_skipped": False,
         "cv_19_features": {
             "cv_accuracy_mean": res_19["cv_accuracy_mean"],
@@ -536,12 +549,11 @@ def run_ablation_19_vs_9(
             "cv_weighted_f1_mean": res_19["cv_weighted_f1_mean"],
         },
         "note": (
-            "Omitting Crop_Growth_Stage (rule #6: Crop_Growth_Stage == 'Vegetative' -> NPK) "
-            "reduces CV macro-F1 by ~4% because NPK can no longer be separated from the 1,358 "
-            "uniform fallback rows (NPK precision drops to ~0.33 when defaulting the non-rule "
-            "region to NPK, even though overall accuracy remains ~88% vs ~88.5% 19-feature "
-            "Bayes ceiling, or ~84% without NPK majority fallback). The other 9 excluded "
-            "features carry negligible signal."
+            "Omitting Nitrogen_Level, Phosphorus_Level, and Potassium_Level (which drive 68.38% of "
+            "the synthetic CSV's deterministic cascade) plus Crop_Growth_Stage (4.53%) causes CV "
+            "accuracy to drop sharply from ~88.5% (19 features) to ~31.6% (6 features, matching the "
+            "32.05% 6-feature Bayes ceiling). Without N-P-K, only the Soil_pH thresholds (<5.5 -> "
+            "Compost, >7.8 -> Zinc Sulphate) and overall class priors carry signal in this synthetic CSV."
         ),
     }
 
@@ -577,10 +589,11 @@ def analyze_leakage_and_imbalance(
         imbalance_assessment = (
             f"Target shows {imbalance_ratio}:1 class imbalance (majority Urea "
             f"{class_distribution['Urea']['share_pct']}% vs minority SSP "
-            f"{class_distribution['SSP']['share_pct']}%). Because all SSP rows occur "
-            "exclusively inside the uniform random fallback rows with no deterministic "
-            "feature rule, class_weight='balanced' increases false positives on majority rules "
-            "without finding true SSP signal."
+            f"{class_distribution['SSP']['share_pct']}%). Without N, P, K, and Crop_Growth_Stage, "
+            "Urea, DAP, MOP, NPK, and SSP are indistinguishable except through neutral-pH priors "
+            "(only Compost at pH < 5.5 and Zinc Sulphate at pH > 7.8 have direct 4-sensor signal). "
+            "Applying class_weight='balanced' collapses overall accuracy (~19-22%) by over-predicting "
+            "noise-dominated minority classes."
         )
     elif len(counts) > 0:
         imbalance_assessment = (
@@ -592,18 +605,22 @@ def analyze_leakage_and_imbalance(
         imbalance_assessment = "Target class distribution is empty."
 
     leakage_suffix = (
-        " Historical columns (Fertilizer_Used_Last_Season, Yield_Last_Season) are excluded."
-        if any(c in df.columns for c in ("Fertilizer_Used_Last_Season", "Yield_Last_Season"))
+        " Historical columns (Fertilizer_Used_Last_Season, Yield_Last_Season) and unavailable "
+        "N-P-K columns are excluded."
+        if any(
+            c in df.columns
+            for c in ("Fertilizer_Used_Last_Season", "Yield_Last_Season", "Nitrogen_Level")
+        )
         else ""
     )
     overlap_summary = (
         "Zero exact feature-vector overlap between train and test splits;"
         if overlap_count == 0
-        else f"{overlap_count} exact 9-feature vector(s) shared between train and test splits;"
+        else f"{overlap_count} exact 6-feature vector(s) shared between train and test splits;"
     )
 
     return {
-        "train_test_exact_9feature_overlap": int(overlap_count),
+        "train_test_exact_6feature_overlap": int(overlap_count),
         "leakage_assessment": (
             f"{overlap_summary} preprocessing "
             "(median imputer, StandardScaler, OneHotEncoder) is encapsulated inside sklearn "
@@ -621,18 +638,19 @@ def format_report_md(metadata: dict[str, Any]) -> str:
     cleaning = metadata["cleaning_summary"]
     cv_rows = metadata["cv_comparison"]
     test_metrics = metadata["test_metrics"]
-    ablation = metadata["ablation_9_vs_19"]
+    ablation = metadata["ablation_6_vs_19"]
     leakage = metadata["leakage_and_imbalance"]
     synth = metadata["synthetic_dataset_notes"]
     imps = metadata["feature_importances"]
 
     lines = [
-        "# SoilSense ML Fertilizer Classifier Report",
+        "# SoilSense ML Fertilizer Classifier Report (4-Sensor / 6-Feature)",
         "",
         f"- **Generated (UTC):** {metadata['trained_at_utc']}",
+        f"- **Model Version:** `{metadata['model_version']}`",
         f"- **Selected Model:** `{metadata['selected_model']}` (single `sklearn.pipeline.Pipeline` with `ColumnTransformer`)",
         f"- **Task:** Multi-class fertilizer classification (`Recommended_Fertilizer` — predicts **WHAT** fertilizer, never dosage/HOW MUCH)",
-        f"- **Production Features (9):** `{', '.join(metadata['features'])}`",
+        f"- **Production Features (6 — No N-P-K):** `{', '.join(metadata['features'])}`",
         f"- **Target Classes ({len(metadata['classes'])}):** `{', '.join(metadata['classes'])}`",
         "",
     ]
@@ -640,10 +658,15 @@ def format_report_md(metadata: dict[str, Any]) -> str:
     if synth.get("is_synthetic"):
         lines.extend(
             [
-                "## 1. Synthetic Dataset Caveats (Do Not Overstate Accuracy)",
+                "## 1. Synthetic Dataset Caveats (Honest Accuracy Disclosure)",
                 "",
                 f"- **100% Synthetic Data:** {synth['generation_mechanism']}",
-                f"- **Theoretical Bayes Ceilings:** ~{synth['bayes_ceiling_19_features']*100:.2f}% (19 features) / ~{synth['bayes_ceiling_9_features']*100:.1f}% (9 features with NPK fallback; ~{synth['bayes_ceiling_9_features_rules_only_approx']*100:.1f}% pure rules-only).",
+                (
+                    f"- **Theoretical Bayes Ceilings:** ~{synth['bayes_ceiling_19_features']*100:.2f}% "
+                    f"(all 19 CSV features including N-P-K) vs **~{synth['bayes_ceiling_6_features']*100:.2f}%** "
+                    f"(6 SoilSense features without N-P-K, because N-P-K drove "
+                    f"{synth['npk_rule_share']*100:.2f}% of the synthetic CSV's rules)."
+                ),
                 f"- **Caveat:** {synth['accuracy_caveat']}",
                 "",
             ]
@@ -668,10 +691,10 @@ def format_report_md(metadata: dict[str, Any]) -> str:
             f"- Null target rows dropped: **{cleaning['null_target_rows_dropped']}**",
             f"- Out-of-agronomic-range rows dropped: **{cleaning['out_of_range_rows_dropped']}**",
             f"- Cleaned rows used (80/20 stratified split -> {metadata['split']['train_rows']} train / {metadata['split']['test_rows']} test): **{cleaning['rows_cleaned']}**",
-            f"- Train/test 9-feature vector overlap: **{leakage['train_test_exact_9feature_overlap']}**",
+            f"- Train/test 6-feature vector overlap: **{leakage['train_test_exact_6feature_overlap']}**",
             f"- Leakage check: {leakage['leakage_assessment']}",
             "",
-            "## 3. Production 9-Feature Schema & 19-Feature Ablation",
+            "## 3. Production 6-Feature Schema & 19-Feature Diagnostic Ablation",
             "",
         ]
     )
@@ -679,7 +702,7 @@ def format_report_md(metadata: dict[str, Any]) -> str:
     if synth.get("excluded_feature_rationale"):
         lines.extend(
             [
-                f"- **Why 10 columns are excluded:** {synth['excluded_feature_rationale']}",
+                f"- **Why 13 columns (including N, P, K) are excluded:** {synth['excluded_feature_rationale']}",
                 "",
             ]
         )
@@ -689,17 +712,17 @@ def format_report_md(metadata: dict[str, Any]) -> str:
             "| Feature Set | Estimator | CV Accuracy | CV Macro-F1 | CV Weighted-F1 |",
             "|---|---|---:|---:|---:|",
             (
-                f"| 9 SoilSense features (Production) | `{metadata['selected_model']}` | "
-                f"{ablation['cv_9_features']['cv_accuracy_mean']:.4f} ± {ablation['cv_9_features']['cv_accuracy_std']:.4f} | "
-                f"{ablation['cv_9_features']['cv_macro_f1_mean']:.4f} | "
-                f"{ablation['cv_9_features']['cv_weighted_f1_mean']:.4f} |"
+                f"| 6 SoilSense features (Production — 4 sensors + crop/soil, no N-P-K) | `{metadata['selected_model']}` | "
+                f"{ablation['cv_6_features']['cv_accuracy_mean']:.4f} ± {ablation['cv_6_features']['cv_accuracy_std']:.4f} | "
+                f"{ablation['cv_6_features']['cv_macro_f1_mean']:.4f} | "
+                f"{ablation['cv_6_features']['cv_weighted_f1_mean']:.4f} |"
             ),
         ]
     )
 
     if not ablation.get("ablation_skipped") and ablation.get("cv_19_features"):
         lines.append(
-            f"| All 19 CSV features (Ablation) | `{ablation['estimator']}` | "
+            f"| All 19 CSV features (Diagnostic Ablation — includes N-P-K & Growth Stage) | `{ablation['estimator']}` | "
             f"{ablation['cv_19_features']['cv_accuracy_mean']:.4f} ± {ablation['cv_19_features']['cv_accuracy_std']:.4f} | "
             f"{ablation['cv_19_features']['cv_macro_f1_mean']:.4f} | "
             f"{ablation['cv_19_features']['cv_weighted_f1_mean']:.4f} |"
@@ -710,7 +733,7 @@ def format_report_md(metadata: dict[str, Any]) -> str:
             "",
             f"> {ablation['note']}",
             "",
-            f"## 4. {metadata['split']['cv_folds']}-Fold Stratified Cross-Validation Model Comparison (9 Features)",
+            f"## 4. {metadata['split']['cv_folds']}-Fold Stratified Cross-Validation Model Comparison (6 Features)",
             "",
             "| Model | Class Weight | CV Accuracy | CV Macro-F1 | CV Weighted-F1 | Train Fold Acc | Train-CV Acc Gap | Production Eligible |",
             "|---|---|---:|---:|---:|---:|---:|:---:|",
@@ -770,7 +793,7 @@ def format_report_md(metadata: dict[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "## 6. Aggregated Feature Importances (9 Input Features)",
+            "## 6. Aggregated Feature Importances (6 Input Features)",
             "",
             "| Input Feature | Native Aggregated Importance | Test Permutation Importance (Acc Drop) |",
             "|---|---:|---:|",
@@ -797,14 +820,14 @@ def train_and_export(
     raw_df = pd.read_csv(data_path)
     cleaned_df, cleaning_summary = clean_dataset(raw_df)
 
-    missing_cols = [c for c in PRODUCTION_FEATURES_9 + [TARGET_COLUMN] if c not in cleaned_df.columns]
+    missing_cols = [c for c in PRODUCTION_FEATURES_6 + [TARGET_COLUMN] if c not in cleaned_df.columns]
     if missing_cols:
         raise ValueError(f"Dataset missing required columns: {missing_cols}")
 
     is_synthetic = resolve_dataset_origin(data_path, cleaned_df, dataset_origin)
     dataset_notes = build_dataset_notes(data_path, is_synthetic)
 
-    X = cleaned_df[PRODUCTION_FEATURES_9].copy()
+    X = cleaned_df[PRODUCTION_FEATURES_6].copy()
     y = cleaned_df[TARGET_COLUMN].astype(str).copy()
 
     indices = np.arange(len(cleaned_df))
@@ -828,8 +851,8 @@ def train_and_export(
             spec,
             X_train,
             y_train,
-            NUMERIC_FEATURES_9,
-            CATEGORICAL_FEATURES_9,
+            NUMERIC_FEATURES_6,
+            CATEGORICAL_FEATURES_6,
             cv,
         )
         for spec in specs
@@ -840,8 +863,8 @@ def train_and_export(
 
     final_pipeline = build_pipeline(
         best_spec["factory"](),
-        NUMERIC_FEATURES_9,
-        CATEGORICAL_FEATURES_9,
+        NUMERIC_FEATURES_6,
+        CATEGORICAL_FEATURES_6,
     )
     final_pipeline.fit(X_train, y_train)
 
@@ -874,15 +897,15 @@ def train_and_export(
 
     feature_importances = aggregate_feature_importances(
         final_pipeline,
-        NUMERIC_FEATURES_9,
-        CATEGORICAL_FEATURES_9,
+        NUMERIC_FEATURES_6,
+        CATEGORICAL_FEATURES_6,
         X_test,
         y_test,
         random_state,
     )
 
-    ablation = run_ablation_19_vs_9(cleaned_df, best_cv["model_name"], specs, train_idx, cv)
-    ablation["cv_9_features"] = {
+    ablation = run_ablation_19_vs_6(cleaned_df, best_cv["model_name"], specs, train_idx, cv)
+    ablation["cv_6_features"] = {
         "cv_accuracy_mean": best_cv["cv_accuracy_mean"],
         "cv_accuracy_std": best_cv["cv_accuracy_std"],
         "cv_macro_f1_mean": best_cv["cv_macro_f1_mean"],
@@ -892,10 +915,10 @@ def train_and_export(
     leakage_imbalance = analyze_leakage_and_imbalance(
         cleaned_df, X_train, X_test, y, is_synthetic=is_synthetic
     )
-    excluded_present = [c for c in EXCLUDED_FEATURES_10 if c in cleaned_df.columns]
+    excluded_present = [c for c in EXCLUDED_FEATURES_13 if c in cleaned_df.columns]
 
     metadata: dict[str, Any] = {
-        "model_version": "1.0.0",
+        "model_version": "2.0.0",
         "trained_at_utc": datetime.now(timezone.utc).isoformat(),
         "random_state": random_state,
         "python_version": sys.version.split()[0],
@@ -905,9 +928,9 @@ def train_and_export(
         "target": TARGET_COLUMN,
         "selected_model": best_cv["model_name"],
         "selection_rationale": selection_rationale,
-        "features": PRODUCTION_FEATURES_9,
-        "numeric_features": NUMERIC_FEATURES_9,
-        "categorical_features": CATEGORICAL_FEATURES_9,
+        "features": PRODUCTION_FEATURES_6,
+        "numeric_features": NUMERIC_FEATURES_6,
+        "categorical_features": CATEGORICAL_FEATURES_6,
         "excluded_features": excluded_present,
         "classes": classes,
         "known_training_categories": {
@@ -935,7 +958,7 @@ def train_and_export(
             "confusion_matrix": cm,
         },
         "feature_importances": feature_importances,
-        "ablation_9_vs_19": ablation,
+        "ablation_6_vs_19": ablation,
         "leakage_and_imbalance": leakage_imbalance,
         "synthetic_dataset_notes": dataset_notes,
     }
@@ -954,7 +977,7 @@ def train_and_export(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train SoilSense fertilizer recommendation classifier."
+        description="Train SoilSense 4-sensor (6-feature) fertilizer recommendation classifier."
     )
     parser.add_argument(
         "--data",

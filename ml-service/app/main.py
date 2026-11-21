@@ -51,9 +51,6 @@ TRAINING_CROP_ALIASES: dict[str, str] = {
 }
 
 TRAINING_NUMERIC_BOUNDS: dict[str, tuple[float, float, str]] = {
-    "Nitrogen_Level": (20.0, 159.0, "mg/kg"),
-    "Phosphorus_Level": (10.0, 89.0, "mg/kg"),
-    "Potassium_Level": (10.0, 119.0, "mg/kg"),
     "Soil_pH": (4.5, 8.5, "pH"),
     "Electrical_Conductivity": (0.1, 3.0, "dS/m"),
     "Soil_Moisture": (10.0, 60.0, "%"),
@@ -117,7 +114,7 @@ def _normalize_crop(crop_raw: str, known_crops: set[str]) -> tuple[str, str | No
         known_list = ", ".join(sorted(known_crops))
         warnings.append(
             f"Crop '{cleaned}' is outside training categories ({known_list}); "
-            "prediction relies on soil chemistry features."
+            "prediction relies on 4-sensor soil features."
         )
     return cleaned, None, warnings
 
@@ -167,10 +164,10 @@ def create_app() -> FastAPI:
     """Create and configure the SoilSense ML FastAPI application."""
     application = FastAPI(
         title="SoilSense Fertilizer Classification Service",
-        version="1.0.0",
+        version="2.0.0",
         description=(
             "Classifies recommended fertilizer type (WHAT fertilizer, never kg/ha dosage) "
-            "from SoilSense 9-feature soil & crop inputs."
+            "from SoilSense 6-feature (4-sensor + crop/soil type, no N-P-K) inputs."
         ),
         lifespan=lifespan,
     )
@@ -248,7 +245,7 @@ def create_app() -> FastAPI:
             )
         meta: dict[str, Any] = request.app.state.metadata
         test_metrics = meta.get("test_metrics", {})
-        ablation = meta.get("ablation_9_vs_19", {})
+        ablation = meta.get("ablation_6_vs_19", {})
         return ModelInfoResponse(
             model_version=meta["model_version"],
             best_model=meta["selected_model"],
@@ -256,7 +253,7 @@ def create_app() -> FastAPI:
             features=meta["features"],
             classes=meta["classes"],
             metrics={
-                "cv_9_features": ablation.get("cv_9_features", {}),
+                "cv_6_features": ablation.get("cv_6_features", {}),
                 "cv_19_features": ablation.get("cv_19_features", {}),
                 "test_accuracy": test_metrics.get("accuracy"),
                 "test_macro_f1": test_metrics.get("macro_f1"),
@@ -296,9 +293,6 @@ def create_app() -> FastAPI:
         )
 
         feature_row = {
-            "Nitrogen_Level": payload.n,
-            "Phosphorus_Level": payload.p,
-            "Potassium_Level": payload.k,
             "Soil_pH": payload.ph,
             "Electrical_Conductivity": payload.ec,
             "Soil_Moisture": payload.moisture,

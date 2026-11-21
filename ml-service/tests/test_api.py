@@ -1,4 +1,4 @@
-"""FastAPI endpoint tests for SoilSense fertilizer classification service."""
+"""FastAPI endpoint tests for SoilSense 4-sensor fertilizer classification service."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.main import create_app
+from app.schemas import PredictRequest
 
 
 @pytest.fixture
@@ -23,20 +24,30 @@ def api_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         yield client
 
 
+def test_predict_request_schema_has_no_npk_fields() -> None:
+    assert set(PredictRequest.model_fields.keys()) == {
+        "ph",
+        "ec",
+        "moisture",
+        "temperature",
+        "crop",
+        "soil_type",
+    }
+    for forbidden in ("n", "p", "k", "nitrogen", "phosphorus", "potassium"):
+        assert forbidden not in PredictRequest.model_fields
+
+
 def test_health_endpoint_unauthenticated(api_client: TestClient) -> None:
     resp = api_client.get("/health")
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "ok"
     assert body["model_loaded"] is True
-    assert body["model_version"] == "1.0.0"
+    assert body["model_version"] == "2.0.0"
 
 
 def test_auth_missing_and_invalid_key_returns_401(api_client: TestClient) -> None:
     payload = {
-        "n": 40,
-        "p": 55,
-        "k": 70,
         "ph": 6.4,
         "ec": 1.2,
         "moisture": 35.0,
@@ -66,9 +77,6 @@ def test_auth_fails_closed_with_503_when_api_key_unset(
         pred_resp = client.post(
             "/predict",
             json={
-                "n": 40,
-                "p": 55,
-                "k": 70,
                 "ph": 6.4,
                 "ec": 1.2,
                 "moisture": 35.0,
@@ -84,11 +92,20 @@ def test_model_info_payload(api_client: TestClient) -> None:
     resp = api_client.get("/model-info", headers={"X-API-KEY": "test-secret-key-123"})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["model_version"] == "1.0.0"
+    assert body["model_version"] == "2.0.0"
     assert body["best_model"] == "GradientBoostingClassifier"
     assert body["task"] == "fertilizer_classification_only"
-    assert len(body["features"]) == 9
+    assert body["features"] == [
+        "Soil_pH",
+        "Electrical_Conductivity",
+        "Soil_Moisture",
+        "Temperature",
+        "Crop_Type",
+        "Soil_Type",
+    ]
     assert len(body["classes"]) == 7
+    assert "cv_6_features" in body["metrics"]
+    assert "cv_19_features" in body["metrics"]
     assert body["dataset_name"] == "fertilizer_recommendation.csv"
     assert body["low_confidence_threshold"] == pytest.approx(0.55)
     assert body["synthetic_dataset_notes"]["is_synthetic"] is True
@@ -112,10 +129,7 @@ def test_predict_valid_soilsense_crops(
         "/predict",
         headers={"X-API-KEY": "test-secret-key-123"},
         json={
-            "n": 35,
-            "p": 55,
-            "k": 70,
-            "ph": 6.4,
+            "ph": 4.8,
             "ec": 1.2,
             "moisture": 35.0,
             "temperature": 26.5,
@@ -125,10 +139,9 @@ def test_predict_valid_soilsense_crops(
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["predicted_fertilizer"] == "Urea"
-    assert body["confidence"] > 0.55
-    assert body["low_confidence"] is False
-    assert body["model_version"] == "1.0.0"
+    assert body["predicted_fertilizer"] == "Compost"
+    assert 0.0 < body["confidence"] <= 1.0
+    assert body["model_version"] == "2.0.0"
     assert body["crop_mapped_from"] == expected_mapped_from
 
     top3 = body["top_predictions"]
@@ -147,9 +160,6 @@ def test_predict_boundary_values_and_domain_warnings(api_client: TestClient) -> 
         "/predict",
         headers={"X-API-KEY": "test-secret-key-123"},
         json={
-            "n": 0.0,
-            "p": 500.0,
-            "k": 0.0,
             "ph": 0.0,
             "ec": 30.0,
             "moisture": 100.0,
@@ -161,18 +171,29 @@ def test_predict_boundary_values_and_domain_warnings(api_client: TestClient) -> 
     body = resp.json()
     assert len(body["top_predictions"]) == 3
     assert any("Electrical_Conductivity" in w for w in body["warnings"])
+    assert any("Soil_pH" in w for w in body["warnings"])
 
 
-def test_predict_low_confidence_flag(api_client: TestClient) -> None:
-    # Non-rule region (N>=60, P>=40, K>=40, 5.5<=pH<=7.8) has ~35% NPK vs ~11% others
+@pytest.mark.parametrize(
+    ("ph_value", "expected_fertilizer"),
+    [
+        (4.8, "Compost"),
+        (6.5, "Urea"),
+        (8.2, "Zinc Sulphate"),
+    ],
+)
+def test_predict_extreme_vs_neutral_ph_and_low_confidence_flag(
+    api_client: TestClient,
+    ph_value: float,
+    expected_fertilizer: str,
+) -> None:
+    # Without N-P-K, honest synthetic posterior probabilities peak around ~0.30-0.34,
+    # so default threshold (0.55) flags low_confidence=True across both extreme and neutral pH.
     resp = api_client.post(
         "/predict",
         headers={"X-API-KEY": "test-secret-key-123"},
         json={
-            "n": 100.0,
-            "p": 70.0,
-            "k": 80.0,
-            "ph": 6.5,
+            "ph": ph_value,
             "ec": 1.5,
             "moisture": 35.0,
             "temperature": 25.0,
@@ -182,22 +203,52 @@ def test_predict_low_confidence_flag(api_client: TestClient) -> None:
     )
     assert resp.status_code == 200
     body = resp.json()
+    assert body["predicted_fertilizer"] == expected_fertilizer
     assert body["confidence"] < 0.55
     assert body["low_confidence"] is True
     assert any("below threshold" in w for w in body["warnings"])
 
 
+def test_predict_low_confidence_clears_when_threshold_below_confidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ML_API_KEY", "test-secret-key-123")
+    monkeypatch.setenv("LOW_CONFIDENCE_THRESHOLD", "0.25")
+    app = create_app()
+    with TestClient(app) as client:
+        resp = client.post(
+            "/predict",
+            headers={"X-API-KEY": "test-secret-key-123"},
+            json={
+                "ph": 4.8,
+                "ec": 1.2,
+                "moisture": 35.0,
+                "temperature": 26.5,
+                "crop": "Tomato",
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["predicted_fertilizer"] == "Compost"
+        assert body["confidence"] >= 0.25
+        assert body["low_confidence"] is False
+        assert not any("below threshold" in w for w in body["warnings"])
+
+
 @pytest.mark.parametrize(
     "bad_payload",
     [
-        {"n": -1, "p": 40, "k": 40, "ph": 6.5, "ec": 1.0, "moisture": 30, "temperature": 25, "crop": "Tomato"},
-        {"n": 501, "p": 40, "k": 40, "ph": 6.5, "ec": 1.0, "moisture": 30, "temperature": 25, "crop": "Tomato"},
-        {"n": 80, "p": 40, "k": 40, "ph": 14.5, "ec": 1.0, "moisture": 30, "temperature": 25, "crop": "Tomato"},
-        {"n": 80, "p": 40, "k": 40, "ph": 6.5, "ec": 31.0, "moisture": 30, "temperature": 25, "crop": "Tomato"},
-        {"n": 80, "p": 40, "k": 40, "ph": 6.5, "ec": 1.0, "moisture": 105, "temperature": 25, "crop": "Tomato"},
-        {"n": 80, "p": 40, "k": 40, "ph": 6.5, "ec": 1.0, "moisture": 30, "temperature": 65, "crop": "Tomato"},
-        {"n": 80, "p": 40, "k": 40, "ph": 6.5, "ec": 1.0, "moisture": 30, "temperature": 25, "crop": "   "},
-        {"n": 80, "p": 40, "k": 40, "ph": 6.5, "ec": 1.0, "moisture": 30, "temperature": 25, "crop": "Tomato", "soil_type": "Gravel"},
+        {"ph": -0.1, "ec": 1.0, "moisture": 30, "temperature": 25, "crop": "Tomato"},
+        {"ph": 14.5, "ec": 1.0, "moisture": 30, "temperature": 25, "crop": "Tomato"},
+        {"ph": 6.5, "ec": -0.5, "moisture": 30, "temperature": 25, "crop": "Tomato"},
+        {"ph": 6.5, "ec": 31.0, "moisture": 30, "temperature": 25, "crop": "Tomato"},
+        {"ph": 6.5, "ec": 1.0, "moisture": -1, "temperature": 25, "crop": "Tomato"},
+        {"ph": 6.5, "ec": 1.0, "moisture": 105, "temperature": 25, "crop": "Tomato"},
+        {"ph": 6.5, "ec": 1.0, "moisture": 30, "temperature": -11, "crop": "Tomato"},
+        {"ph": 6.5, "ec": 1.0, "moisture": 30, "temperature": 65, "crop": "Tomato"},
+        {"ph": 6.5, "ec": 1.0, "moisture": 30, "temperature": 25, "crop": "   "},
+        {"ph": 6.5, "ec": 1.0, "moisture": 30, "temperature": 25, "crop": "Tomato", "soil_type": "Gravel"},
+        {"ec": 1.0, "moisture": 30, "temperature": 25, "crop": "Tomato"},
     ],
 )
 def test_predict_invalid_inputs_return_422(
