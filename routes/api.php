@@ -35,6 +35,14 @@ Route::prefix('v1')->group(function () {
         Route::get('/reports/{id}', [MobileApiController::class, 'showReport'])->name('api.v1.mobile.reports.show');
         Route::get('/devices', [MobileApiController::class, 'devices'])->name('api.v1.mobile.devices');
         Route::get('/devices/{id}', [MobileApiController::class, 'showDevice'])->name('api.v1.mobile.devices.show');
+
+        // Token-Authenticated Mobile Fertilizer Recommendation Endpoints
+        Route::middleware([AuthenticateDevice::class])->group(function () {
+            Route::get('/samples/{id}/fertilizer', [MobileApiController::class, 'sampleFertilizer'])
+                ->name('api.v1.mobile.samples.fertilizer');
+            Route::post('/samples/{id}/fertilizer', [MobileApiController::class, 'storeSampleFertilizer'])
+                ->name('api.v1.mobile.samples.fertilizer.store');
+        });
     });
 });
 

@@ -68,6 +68,26 @@ const float PH_SLOPE  = -5.70;
 const float PH_OFFSET = 21.34;
 
 // -----------------------------------------------------------------------------
+// 3B. OPTIONAL NPK SENSOR CONFIGURATION (RS-485 Modbus RTU — Disabled by Default)
+// -----------------------------------------------------------------------------
+// Set ENABLE_NPK_SENSOR to true only when an RS-485 Soil NPK probe (mg/kg)
+// is wired via a MAX485 transceiver. When false (default), the firmware omits
+// "n", "p", "k" from the JSON payload for 100% 4-sensor backward compatibility.
+#define ENABLE_NPK_SENSOR false
+
+// RS-485 UART2 & MAX485 direction-control pins (only used if ENABLE_NPK_SENSOR is true)
+#define PIN_NPK_RS485_RX       16   // ESP32 UART2 RX <- MAX485 RO
+#define PIN_NPK_RS485_TX       17   // ESP32 UART2 TX -> MAX485 DI
+#define PIN_NPK_RS485_DE_RE    5    // MAX485 DE & RE tied together (HIGH = TX, LOW = RX)
+
+// Standard Soil NPK Modbus RTU settings (verify against your probe datasheet)
+const uint8_t  NPK_MODBUS_ADDR = 0x01;
+const uint32_t NPK_MODBUS_BAUD = 4800; // Common probes use 4800 or 9600 baud (8N1)
+const uint16_t NPK_REG_N       = 0x001E; // Nitrogen (mg/kg)
+const uint16_t NPK_REG_P       = 0x001F; // Phosphorus (mg/kg)
+const uint16_t NPK_REG_K       = 0x0020; // Potassium (mg/kg)
+
+// -----------------------------------------------------------------------------
 // 4. SENSOR READING FUNCTIONS
 // -----------------------------------------------------------------------------
 
@@ -140,9 +160,109 @@ float readSoilEC(float tempC) {
 }
 
 // -----------------------------------------------------------------------------
+// 4B. OPTIONAL SOIL NPK SENSOR FUNCTIONS (mg/kg via RS-485 Modbus RTU)
+// -----------------------------------------------------------------------------
+#if ENABLE_NPK_SENSOR
+// Compute standard Modbus RTU CRC-16 (polynomial 0xA001)
+uint16_t modbusCRC16(const uint8_t* buf, size_t len) {
+    uint16_t crc = 0xFFFF;
+    for (size_t pos = 0; pos < len; pos++) {
+        crc ^= (uint16_t)buf[pos];
+        for (int i = 0; i < 8; i++) {
+            if (crc & 0x0001) {
+                crc >>= 1;
+                crc ^= 0xA001;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    return crc;
+}
+
+// Query a single 16-bit holding register (mg/kg); returns -1.0f if unconnected or invalid
+float readModbusNPKRegister(uint16_t regAddr) {
+    uint8_t req[8];
+    req[0] = NPK_MODBUS_ADDR;
+    req[1] = 0x03; // Read Holding Registers
+    req[2] = (uint8_t)((regAddr >> 8) & 0xFF);
+    req[3] = (uint8_t)(regAddr & 0xFF);
+    req[4] = 0x00;
+    req[5] = 0x01; // Read 1 register
+    uint16_t crc = modbusCRC16(req, 6);
+    req[6] = (uint8_t)(crc & 0xFF);
+    req[7] = (uint8_t)((crc >> 8) & 0xFF);
+
+    while (Serial2.available()) {
+        Serial2.read();
+    }
+
+    digitalWrite(PIN_NPK_RS485_DE_RE, HIGH);
+    delay(2);
+    Serial2.write(req, sizeof(req));
+    Serial2.flush();
+    delay(2);
+    digitalWrite(PIN_NPK_RS485_DE_RE, LOW);
+
+    uint8_t resp[7];
+    size_t idx = 0;
+    unsigned long startMs = millis();
+    while (idx < sizeof(resp) && (millis() - startMs) < 250) {
+        if (Serial2.available()) {
+            resp[idx++] = (uint8_t)Serial2.read();
+        }
+    }
+
+    if (idx < sizeof(resp) || resp[0] != NPK_MODBUS_ADDR || resp[1] != 0x03 || resp[2] != 0x02) {
+        return -1.0f;
+    }
+
+    uint16_t expectedCrc = modbusCRC16(resp, 5);
+    uint16_t receivedCrc = (uint16_t)resp[5] | ((uint16_t)resp[6] << 8);
+    if (expectedCrc != receivedCrc) {
+        return -1.0f;
+    }
+
+    uint16_t rawMgKg = ((uint16_t)resp[3] << 8) | (uint16_t)resp[4];
+    if (rawMgKg > 1999) {
+        return -1.0f;
+    }
+    return (float)rawMgKg;
+}
+#endif
+
+// Read Soil Nitrogen (N in mg/kg); returns -1.0f when disabled or probe unconnected
+float readSoilNitrogen() {
+#if ENABLE_NPK_SENSOR
+    return readModbusNPKRegister(NPK_REG_N);
+#else
+    return -1.0f;
+#endif
+}
+
+// Read Soil Phosphorus (P in mg/kg); returns -1.0f when disabled or probe unconnected
+float readSoilPhosphorus() {
+#if ENABLE_NPK_SENSOR
+    return readModbusNPKRegister(NPK_REG_P);
+#else
+    return -1.0f;
+#endif
+}
+
+// Read Soil Potassium (K in mg/kg); returns -1.0f when disabled or probe unconnected
+float readSoilPotassium() {
+#if ENABLE_NPK_SENSOR
+    return readModbusNPKRegister(NPK_REG_K);
+#else
+    return -1.0f;
+#endif
+}
+
+// -----------------------------------------------------------------------------
 // 5. HTTP TELEMETRY TRANSMISSION
 // -----------------------------------------------------------------------------
-void sendTelemetry(float ph, float moisture, float tempC, float ec) {
+void sendTelemetry(float ph, float moisture, float tempC, float ec,
+                   float nitrogen, float phosphorus, float potassium) {
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println(F("[ERROR] WiFi not connected. Transmission skipped."));
         return;
@@ -181,6 +301,29 @@ void sendTelemetry(float ph, float moisture, float tempC, float ec) {
     } else {
         jsonPayload += "\"ec_ms_cm\":null";
     }
+
+#if ENABLE_NPK_SENSOR
+    // Optional NPK telemetry (mg/kg) — omitted completely when ENABLE_NPK_SENSOR is false
+    if (nitrogen >= 0.0f) {
+        jsonPayload += ",\"n\":" + String(nitrogen, 1);
+    } else {
+        jsonPayload += ",\"n\":null";
+    }
+    if (phosphorus >= 0.0f) {
+        jsonPayload += ",\"p\":" + String(phosphorus, 1);
+    } else {
+        jsonPayload += ",\"p\":null";
+    }
+    if (potassium >= 0.0f) {
+        jsonPayload += ",\"k\":" + String(potassium, 1);
+    } else {
+        jsonPayload += ",\"k\":null";
+    }
+#else
+    (void)nitrogen;
+    (void)phosphorus;
+    (void)potassium;
+#endif
     
     jsonPayload += "}";
 
@@ -210,6 +353,11 @@ void sendTelemetry(float ph, float moisture, float tempC, float ec) {
     http.end();
 }
 
+// Backward-compatible 4-sensor overload
+void sendTelemetry(float ph, float moisture, float tempC, float ec) {
+    sendTelemetry(ph, moisture, tempC, ec, -1.0f, -1.0f, -1.0f);
+}
+
 // -----------------------------------------------------------------------------
 // 6. SETUP & MAIN LOOP
 // -----------------------------------------------------------------------------
@@ -230,6 +378,14 @@ void setup() {
 
     // Initialize DS18B20 OneWire temperature bus
     tempSensor.begin();
+
+#if ENABLE_NPK_SENSOR
+    // Initialize RS-485 UART2 for optional NPK Modbus RTU probe
+    pinMode(PIN_NPK_RS485_DE_RE, OUTPUT);
+    digitalWrite(PIN_NPK_RS485_DE_RE, LOW);
+    Serial2.begin(NPK_MODBUS_BAUD, SERIAL_8N1, PIN_NPK_RS485_RX, PIN_NPK_RS485_TX);
+    Serial.println(F("[NPK] Optional RS-485 Modbus NPK sensor enabled."));
+#endif
 
     // Connect to WiFi
     Serial.print(F("[WIFI] Connecting to "));
@@ -276,7 +432,19 @@ void loop() {
         Serial.print(F(" -> Temperature: ")); Serial.print(tempC, 1); Serial.println(F(" °C"));
         Serial.print(F(" -> Electrical Conductivity: ")); Serial.print(ec, 2); Serial.println(F(" mS/cm"));
 
+#if ENABLE_NPK_SENSOR
+        float nitrogen = readSoilNitrogen();
+        float phosphorus = readSoilPhosphorus();
+        float potassium = readSoilPotassium();
+
+        Serial.print(F(" -> Nitrogen (N): ")); Serial.print(nitrogen, 1); Serial.println(F(" mg/kg"));
+        Serial.print(F(" -> Phosphorus (P): ")); Serial.print(phosphorus, 1); Serial.println(F(" mg/kg"));
+        Serial.print(F(" -> Potassium (K): ")); Serial.print(potassium, 1); Serial.println(F(" mg/kg"));
+
+        sendTelemetry(ph, moisture, tempC, ec, nitrogen, phosphorus, potassium);
+#else
         sendTelemetry(ph, moisture, tempC, ec);
+#endif
     }
 
     delay(100);

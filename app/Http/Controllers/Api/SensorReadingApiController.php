@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\StoreSensorReadingApiRequest;
+use App\Http\Resources\FertilizerRecommendationResource;
 use App\Models\IotDevice;
 use App\Models\SensorReading;
 use App\Models\SoilSample;
+use App\Services\FertilizerRecommendationService;
 use App\Services\SoilAssessmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,7 +19,8 @@ use Symfony\Component\HttpFoundation\Response;
 class SensorReadingApiController extends Controller
 {
     public function __construct(
-        protected SoilAssessmentService $soilAssessmentService
+        protected SoilAssessmentService $soilAssessmentService,
+        protected FertilizerRecommendationService $fertilizerRecommendationService
     ) {}
 
     /**
@@ -55,6 +58,11 @@ class SensorReadingApiController extends Controller
         $moisturePercent = $validated['moisture_percent'] ?? null;
         $temperatureC = $validated['temperature_c'] ?? null;
         $ecMsCm = $validated['ec_ms_cm'] ?? null;
+        $n = $validated['n'] ?? null;
+        $p = $validated['p'] ?? null;
+        $k = $validated['k'] ?? null;
+        $hasNpk = $n !== null || $p !== null || $k !== null;
+        $npkSource = $hasNpk ? ($authenticatedDevice->is_demo ? 'demo' : 'sensor') : null;
 
         // Idempotency / Duplicate protection: Check if identical reading was submitted recently (< 10 seconds)
         $recentDuplicate = SensorReading::where('soil_sample_id', $sample->id)
@@ -64,6 +72,9 @@ class SensorReadingApiController extends Controller
             ->where('moisture', $moisturePercent)
             ->where('temperature', $temperatureC)
             ->where('ec', $ecMsCm)
+            ->where('nitrogen', $n)
+            ->where('phosphorus', $p)
+            ->where('potassium', $k)
             ->first();
 
         if ($recentDuplicate) {
@@ -92,7 +103,7 @@ class SensorReadingApiController extends Controller
             : Carbon::now();
 
         // Transactional persistence & assessment evaluation
-        $result = DB::transaction(function () use ($sample, $authenticatedDevice, $ph, $moisturePercent, $temperatureC, $ecMsCm, $moistureUnit, $calibrationMetadata, $recordedAt) {
+        $result = DB::transaction(function () use ($sample, $authenticatedDevice, $ph, $moisturePercent, $temperatureC, $ecMsCm, $n, $p, $k, $npkSource, $moistureUnit, $calibrationMetadata, $recordedAt) {
             // Update device status and communication metadata
             $authenticatedDevice->update([
                 'last_seen_at' => Carbon::now(),
@@ -109,6 +120,10 @@ class SensorReadingApiController extends Controller
                 'temperature' => $temperatureC,
                 'ec' => $ecMsCm,
                 'ec_unit' => 'mS/cm',
+                'nitrogen' => $n,
+                'phosphorus' => $p,
+                'potassium' => $k,
+                'npk_source' => $npkSource,
                 'is_valid' => true,
                 'validity_notes' => 'Ingested via authenticated ESP32 REST API',
                 'calibration_metadata' => $calibrationMetadata,
@@ -127,11 +142,26 @@ class SensorReadingApiController extends Controller
                 $assessmentTriggered = true;
             }
 
+            $fertilizerRecommendation = null;
+            if ($n !== null && $p !== null && $k !== null) {
+                try {
+                    $fertilizerRecommendation = $this->fertilizerRecommendationService->recommend(
+                        $sample,
+                        $reading,
+                        $assessment
+                    );
+                    $fertilizerRecommendation->setRelation('reading', $reading);
+                } catch (\Throwable $e) {
+                    $fertilizerRecommendation = null;
+                }
+            }
+
             return [
                 'reading' => $reading,
                 'audit' => $audit,
                 'assessment_triggered' => $assessmentTriggered,
                 'assessment' => $assessment,
+                'fertilizer_recommendation' => $fertilizerRecommendation,
             ];
         });
 
@@ -139,6 +169,7 @@ class SensorReadingApiController extends Controller
         $audit = $result['audit'];
         $assessmentTriggered = $result['assessment_triggered'];
         $assessment = $result['assessment'];
+        $fertilizerRecommendation = $result['fertilizer_recommendation'];
 
         return response()->json([
             'success' => true,
@@ -170,6 +201,21 @@ class SensorReadingApiController extends Controller
                         'unit' => $reading->ec_unit,
                         'valid' => $audit['is_ec_valid'],
                     ],
+                    'nitrogen' => [
+                        'value' => $reading->nitrogen,
+                        'unit' => 'mg/kg',
+                        'source' => $reading->npk_source,
+                    ],
+                    'phosphorus' => [
+                        'value' => $reading->phosphorus,
+                        'unit' => 'mg/kg',
+                        'source' => $reading->npk_source,
+                    ],
+                    'potassium' => [
+                        'value' => $reading->potassium,
+                        'unit' => 'mg/kg',
+                        'source' => $reading->npk_source,
+                    ],
                 ],
                 'data_quality' => [
                     'usable_parameters_count' => $audit['usable_count'],
@@ -182,6 +228,9 @@ class SensorReadingApiController extends Controller
                     'status' => $assessment?->status ?? 'pending_sufficient_telemetry',
                     'summary' => $assessment?->summary,
                 ],
+                'fertilizer_recommendation' => $fertilizerRecommendation
+                    ? (new FertilizerRecommendationResource($fertilizerRecommendation))->resolve($request)
+                    : null,
             ],
         ], Response::HTTP_CREATED);
     }

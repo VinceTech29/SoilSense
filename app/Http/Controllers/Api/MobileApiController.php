@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreSoilSampleRequest;
+use App\Http\Resources\FertilizerRecommendationResource;
 use App\Models\CropProfile;
 use App\Models\IotDevice;
 use App\Models\SensorReading;
@@ -11,6 +12,7 @@ use App\Models\SoilAssessment;
 use App\Models\SoilSample;
 use App\Models\User;
 use App\Services\CropSuitabilityService;
+use App\Services\FertilizerRecommendationService;
 use App\Services\SoilAssessmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +24,8 @@ class MobileApiController extends Controller
 {
     public function __construct(
         protected SoilAssessmentService $soilAssessmentService,
-        protected CropSuitabilityService $cropSuitabilityService
+        protected CropSuitabilityService $cropSuitabilityService,
+        protected FertilizerRecommendationService $fertilizerRecommendationService
     ) {}
 
     /**
@@ -199,6 +202,10 @@ class MobileApiController extends Controller
                 'temperature' => $reading->temperature !== null ? (float) $reading->temperature : null,
                 'ec' => $reading->ec !== null ? (float) $reading->ec : null,
                 'ec_unit' => $reading->ec_unit,
+                'nitrogen' => $reading->nitrogen !== null ? (float) $reading->nitrogen : null,
+                'phosphorus' => $reading->phosphorus !== null ? (float) $reading->phosphorus : null,
+                'potassium' => $reading->potassium !== null ? (float) $reading->potassium : null,
+                'npk_source' => $reading->npk_source,
                 'is_demo' => $isDemo,
                 'data_source' => $reading->data_source,
                 'recorded_at' => $reading->recorded_at->toIso8601String(),
@@ -228,6 +235,10 @@ class MobileApiController extends Controller
                     'moisture' => $r->moisture !== null ? (float) $r->moisture : null,
                     'temperature' => $r->temperature !== null ? (float) $r->temperature : null,
                     'ec' => $r->ec !== null ? (float) $r->ec : null,
+                    'nitrogen' => $r->nitrogen !== null ? (float) $r->nitrogen : null,
+                    'phosphorus' => $r->phosphorus !== null ? (float) $r->phosphorus : null,
+                    'potassium' => $r->potassium !== null ? (float) $r->potassium : null,
+                    'npk_source' => $r->npk_source,
                 ];
             });
 
@@ -344,6 +355,9 @@ class MobileApiController extends Controller
                 'sample_code' => 'SS-' . date('Y') . '-TEMP-' . uniqid('', true),
                 'name' => $validated['name'],
                 'location' => $validated['location'] ?? 'Mobile Field Sample',
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+                'soil_type' => $validated['soil_type'] ?? null,
                 'collected_at' => Carbon::parse($validated['collected_at']),
                 'testing_method' => $validated['testing_method'],
                 'source_type' => $sourceType,
@@ -358,9 +372,21 @@ class MobileApiController extends Controller
                 'sample_code' => 'SS-' . date('Y') . '-' . str_pad($sample->id, 3, '0', STR_PAD_LEFT),
             ]);
 
+            $n = $validated['nitrogen'] ?? null;
+            $p = $validated['phosphorus'] ?? null;
+            $k = $validated['potassium'] ?? null;
+            $hasNpk = $n !== null || $p !== null || $k !== null;
+            $npkSource = $hasNpk ? ($sourceType === 'demo' ? 'demo' : 'manual') : null;
+
             // If reading data was provided, record sensor reading
             $reading = null;
-            if (isset($validated['ph']) || isset($validated['moisture']) || isset($validated['temperature']) || isset($validated['ec'])) {
+            if (
+                isset($validated['ph'])
+                || isset($validated['moisture'])
+                || isset($validated['temperature'])
+                || isset($validated['ec'])
+                || $hasNpk
+            ) {
                 $reading = SensorReading::create([
                     'soil_sample_id' => $sample->id,
                     'device_id' => $sample->device_id,
@@ -371,21 +397,38 @@ class MobileApiController extends Controller
                     'temperature' => $validated['temperature'] ?? null,
                     'ec' => $validated['ec'] ?? null,
                     'ec_unit' => $validated['ec_unit'] ?? 'mS/cm',
+                    'nitrogen' => $n,
+                    'phosphorus' => $p,
+                    'potassium' => $k,
+                    'npk_source' => $npkSource,
                     'is_valid' => true,
                     'data_source' => $sourceType,
                 ]);
             }
 
             // Run automated agronomic assessment
-            $this->soilAssessmentService->evaluateSample($sample, $reading);
+            $assessment = $this->soilAssessmentService->evaluateSample($sample, $reading);
 
-            $freshSample = $sample->fresh(['latestReading', 'latestAssessment.cropEvaluations.crop']);
+            if ($reading && $n !== null && $p !== null && $k !== null) {
+                try {
+                    $this->fertilizerRecommendationService->recommend($sample, $reading, $assessment);
+                } catch (\Throwable $e) {
+                    // Fail safe
+                }
+            }
+
+            $freshSample = $sample->fresh(['latestReading.latestFertilizerRecommendation', 'latestAssessment.cropEvaluations.crop']);
             $sampleData = $freshSample->toArray();
             $sampleData['crop_evaluations'] = $freshSample->latestAssessment?->cropEvaluations->map(function ($eval) {
                 $evalArr = $eval->toArray();
                 $evalArr['crop_name'] = $eval->crop?->name;
                 return $evalArr;
             })->values()->all() ?? [];
+
+            $fertRec = $freshSample->latestReading?->latestFertilizerRecommendation;
+            $sampleData['fertilizer_recommendation'] = $fertRec
+                ? (new FertilizerRecommendationResource($fertRec))->resolve(request())
+                : null;
 
             return $sampleData;
         });
@@ -403,7 +446,7 @@ class MobileApiController extends Controller
     public function showAssessment(int|string $id): JsonResponse
     {
         $assessment = SoilAssessment::with([
-            'soilSample.latestReading',
+            'soilSample.latestReading.latestFertilizerRecommendation',
             'cropEvaluations.crop',
         ])->find($id);
 
@@ -415,6 +458,9 @@ class MobileApiController extends Controller
         }
 
         $sample = $assessment->soilSample;
+        $reading = $sample?->latestReading;
+        $fertilizerRecommendation = $reading?->latestFertilizerRecommendation;
+
         $evaluations = $assessment->cropEvaluations->map(function ($eval) {
             $data = $eval->toArray();
             $data['crop_name'] = $eval->crop?->name;
@@ -424,6 +470,9 @@ class MobileApiController extends Controller
         $data = $assessment->toArray();
         $data['sample'] = $sample;
         $data['crop_evaluations'] = $evaluations;
+        $data['fertilizer_recommendation'] = $fertilizerRecommendation
+            ? (new FertilizerRecommendationResource($fertilizerRecommendation))->resolve(request())
+            : null;
 
         return response()->json([
             'success' => true,
@@ -454,7 +503,7 @@ class MobileApiController extends Controller
         $sample = SoilSample::where('sample_code', $id)
             ->orWhere('id', is_numeric($id) ? (int) $id : 0)
             ->with([
-                'latestReading',
+                'latestReading.latestFertilizerRecommendation',
                 'latestAssessment.cropEvaluations.crop.requirements',
                 'device',
             ])
@@ -469,6 +518,26 @@ class MobileApiController extends Controller
 
         $reading = $sample->latestReading;
         $assessment = $sample->latestAssessment;
+        $fertilizerRecommendation = $reading?->latestFertilizerRecommendation;
+
+        if (
+            $reading
+            && $reading->nitrogen !== null
+            && $reading->phosphorus !== null
+            && $reading->potassium !== null
+            && !$fertilizerRecommendation
+        ) {
+            try {
+                $fertilizerRecommendation = $this->fertilizerRecommendationService->recommend(
+                    $sample,
+                    $reading,
+                    $assessment
+                );
+                $reading->setRelation('latestFertilizerRecommendation', $fertilizerRecommendation);
+            } catch (\Throwable $e) {
+                $fertilizerRecommendation = null;
+            }
+        }
 
         $measurements = [
             'ph' => [
@@ -536,8 +605,159 @@ class MobileApiController extends Controller
                     'missing_information' => $assessment?->missing_information,
                 ],
                 'measurements' => $measurements,
+                'fertilizer_recommendation' => $fertilizerRecommendation
+                    ? (new FertilizerRecommendationResource($fertilizerRecommendation))->resolve(request())
+                    : null,
             ],
         ]);
+    }
+
+    /**
+     * Get or auto-generate the FertilizerRecommendation for a specific sample (Token-Authenticated)
+     */
+    public function sampleFertilizer(Request $request, string $id): JsonResponse
+    {
+        $sample = SoilSample::where('sample_code', $id)
+            ->orWhere('id', is_numeric($id) ? (int) $id : 0)
+            ->with([
+                'latestReading.latestFertilizerRecommendation',
+                'latestAssessment.cropEvaluations.crop',
+            ])
+            ->first();
+
+        if (!$sample) {
+            return response()->json([
+                'success' => false,
+                'message' => "Soil sample '{$id}' not found.",
+                'code' => 'SAMPLE_NOT_FOUND',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $reading = $sample->latestReading;
+        $recommendation = $reading?->latestFertilizerRecommendation;
+
+        if (!$recommendation) {
+            if (!$reading || $reading->nitrogen === null || $reading->phosphorus === null || $reading->potassium === null) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Soil N-P-K values (nitrogen, phosphorus, potassium) are required before generating a fertilizer recommendation.',
+                    'code' => 'NPK_REQUIRED',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $recommendation = $this->fertilizerRecommendationService->recommend(
+                $sample,
+                $reading,
+                $sample->latestAssessment,
+                $request->query('crop') ? (string) $request->query('crop') : null
+            );
+        }
+
+        $recommendation->setRelation('reading', $reading);
+
+        return response()->json([
+            'success' => true,
+            'data' => (new FertilizerRecommendationResource($recommendation))->resolve($request),
+        ]);
+    }
+
+    /**
+     * Submit or update manual N-P-K and generate a FertilizerRecommendation for a sample (Token-Authenticated)
+     */
+    public function storeSampleFertilizer(Request $request, string $id): JsonResponse
+    {
+        $sample = SoilSample::where('sample_code', $id)
+            ->orWhere('id', is_numeric($id) ? (int) $id : 0)
+            ->with([
+                'latestReading',
+                'latestAssessment.cropEvaluations.crop',
+            ])
+            ->first();
+
+        if (!$sample) {
+            return response()->json([
+                'success' => false,
+                'message' => "Soil sample '{$id}' not found.",
+                'code' => 'SAMPLE_NOT_FOUND',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $validated = $request->validate([
+            'n' => ['nullable', 'numeric', 'between:0,500'],
+            'nitrogen' => ['nullable', 'numeric', 'between:0,500'],
+            'p' => ['nullable', 'numeric', 'between:0,500'],
+            'phosphorus' => ['nullable', 'numeric', 'between:0,500'],
+            'k' => ['nullable', 'numeric', 'between:0,500'],
+            'potassium' => ['nullable', 'numeric', 'between:0,500'],
+            'crop' => ['nullable', 'string', 'max:100'],
+            'soil_type' => ['nullable', 'string', 'in:Sandy,Silt,Loamy,Clay'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
+
+        $n = $validated['nitrogen'] ?? $validated['n'] ?? null;
+        $p = $validated['phosphorus'] ?? $validated['p'] ?? null;
+        $k = $validated['potassium'] ?? $validated['k'] ?? null;
+
+        $recommendation = DB::transaction(function () use ($sample, $validated, $n, $p, $k) {
+            $sampleUpdates = [];
+            foreach (['soil_type', 'latitude', 'longitude'] as $field) {
+                if (array_key_exists($field, $validated) && $validated[$field] !== null) {
+                    $sampleUpdates[$field] = $validated[$field];
+                }
+            }
+            if ($sampleUpdates !== []) {
+                $sample->update($sampleUpdates);
+            }
+
+            $reading = $sample->latestReading;
+            if ($n !== null || $p !== null || $k !== null) {
+                if ($reading) {
+                    $reading->update([
+                        'nitrogen' => $n ?? $reading->nitrogen,
+                        'phosphorus' => $p ?? $reading->phosphorus,
+                        'potassium' => $k ?? $reading->potassium,
+                        'npk_source' => 'manual',
+                    ]);
+                } else {
+                    $reading = SensorReading::create([
+                        'soil_sample_id' => $sample->id,
+                        'device_id' => $sample->device_id,
+                        'nitrogen' => $n,
+                        'phosphorus' => $p,
+                        'potassium' => $k,
+                        'npk_source' => 'manual',
+                        'is_valid' => true,
+                        'recorded_at' => Carbon::now(),
+                        'data_source' => $sample->source_type ?: 'manual',
+                    ]);
+                    $sample->setRelation('latestReading', $reading);
+                }
+            }
+
+            if (!$reading || $reading->nitrogen === null || $reading->phosphorus === null || $reading->potassium === null) {
+                abort(response()->json([
+                    'success' => false,
+                    'message' => 'Soil N-P-K values (nitrogen, phosphorus, potassium) are required to generate a fertilizer recommendation.',
+                    'code' => 'NPK_REQUIRED',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY));
+            }
+
+            $rec = $this->fertilizerRecommendationService->recommend(
+                $sample,
+                $reading,
+                $sample->latestAssessment,
+                $validated['crop'] ?? null
+            );
+            $rec->setRelation('reading', $reading);
+
+            return $rec;
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => (new FertilizerRecommendationResource($recommendation))->resolve($request),
+        ], Response::HTTP_CREATED);
     }
 
     /**

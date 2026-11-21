@@ -145,7 +145,7 @@ class SettingsController extends Controller
      */
     public function exportSamples(): StreamedResponse
     {
-        $samples = SoilSample::with(['latestReading', 'device', 'latestAssessment'])
+        $samples = SoilSample::with(['latestReading.latestFertilizerRecommendation', 'device', 'latestAssessment'])
             ->orderBy('collected_at', 'desc')
             ->get();
 
@@ -180,10 +180,20 @@ class SettingsController extends Controller
                 'Assessment Status',
                 'Operator Name',
                 'Notes',
+                'Nitrogen (mg/kg)',
+                'Phosphorus (mg/kg)',
+                'Potassium (mg/kg)',
+                'NPK Source',
+                'Recommended Fertilizer',
+                'Fertilizer Dose (kg/ha)',
+                'Rain Advisory',
             ]);
 
             foreach ($samples as $sample) {
                 $r = $sample->latestReading;
+                $fert = $r?->latestFertilizerRecommendation;
+                $rainStatus = is_array($fert?->rain_advisory) ? ($fert->rain_advisory['status'] ?? '') : '';
+
                 fputcsv($handle, [
                     $sample->sample_code,
                     $sample->name,
@@ -201,6 +211,13 @@ class SettingsController extends Controller
                     $sample->assessment_status,
                     $sample->operator_name,
                     $sample->notes ?? '',
+                    $r && $r->nitrogen !== null ? $r->nitrogen : '',
+                    $r && $r->phosphorus !== null ? $r->phosphorus : '',
+                    $r && $r->potassium !== null ? $r->potassium : '',
+                    $r?->npk_source ?? '',
+                    $fert?->predicted_fertilizer ?? '',
+                    $fert && $fert->dose_kg_ha !== null ? $fert->dose_kg_ha : '',
+                    $rainStatus,
                 ]);
             }
 
