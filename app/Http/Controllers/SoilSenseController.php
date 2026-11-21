@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreManualNpkRequest;
+use App\Http\Requests\StoreFertilizerRefreshRequest;
 use App\Http\Requests\StoreSoilSampleRequest;
 use App\Models\CropProfile;
 use App\Models\IotDevice;
@@ -211,12 +211,6 @@ class SoilSenseController extends Controller
                 'user_id' => $user?->id,
             ]);
 
-            $n = $validated['nitrogen'] ?? null;
-            $p = $validated['phosphorus'] ?? null;
-            $k = $validated['potassium'] ?? null;
-            $hasNpk = $n !== null || $p !== null || $k !== null;
-            $npkSource = $hasNpk ? ($sample->source_type === 'demo' ? 'demo' : 'manual') : null;
-
             $reading = SensorReading::create([
                 'soil_sample_id' => $sample->id,
                 'device_id' => $sample->device_id,
@@ -226,10 +220,6 @@ class SoilSenseController extends Controller
                 'temperature' => $validated['temperature'] ?? null,
                 'ec' => $validated['ec'] ?? null,
                 'ec_unit' => $validated['ec_unit'] ?? 'mS/cm',
-                'nitrogen' => $n,
-                'phosphorus' => $p,
-                'potassium' => $k,
-                'npk_source' => $npkSource,
                 'is_valid' => true,
                 'recorded_at' => Carbon::now(),
                 'data_source' => $sample->source_type,
@@ -237,7 +227,12 @@ class SoilSenseController extends Controller
 
             $assessment = $assessmentService->evaluateSample($sample, $reading);
 
-            if ($n !== null && $p !== null && $k !== null) {
+            if (
+                $reading->ph !== null
+                || $reading->moisture !== null
+                || $reading->temperature !== null
+                || $reading->ec !== null
+            ) {
                 try {
                     $fertilizerService->recommend($sample, $reading, $assessment);
                 } catch (\Throwable $e) {
@@ -253,10 +248,10 @@ class SoilSenseController extends Controller
     }
 
     /**
-     * Store manual N-P-K values for an existing sample and generate fertilizer recommendation
+     * Recalculate fertilizer recommendation for an existing sample using 4-sensor telemetry + crop/soil type
      */
-    public function storeManualNpk(
-        StoreManualNpkRequest $request,
+    public function refreshFertilizer(
+        StoreFertilizerRefreshRequest $request,
         string $id,
         FertilizerRecommendationService $fertilizerService
     ) {
@@ -267,7 +262,16 @@ class SoilSenseController extends Controller
             ->with(['latestReading', 'latestAssessment.cropEvaluations.crop'])
             ->firstOrFail();
 
-        DB::transaction(function () use ($sample, $validated, $fertilizerService) {
+        $reading = $sample->latestReading;
+        if (
+            !$reading
+            || ($reading->ph === null && $reading->moisture === null && $reading->temperature === null && $reading->ec === null)
+        ) {
+            return redirect()->route('report', ['id' => $sample->sample_code])
+                ->withErrors(['telemetry' => 'At least one soil sensor measurement (pH, moisture, temperature, or EC) is required to recalculate a fertilizer recommendation.']);
+        }
+
+        DB::transaction(function () use ($sample, $reading, $validated, $fertilizerService) {
             $sampleUpdates = [];
             foreach (['soil_type', 'latitude', 'longitude'] as $field) {
                 if (array_key_exists($field, $validated) && $validated[$field] !== null) {
@@ -276,29 +280,6 @@ class SoilSenseController extends Controller
             }
             if ($sampleUpdates !== []) {
                 $sample->update($sampleUpdates);
-            }
-
-            $reading = $sample->latestReading;
-            if ($reading) {
-                $reading->update([
-                    'nitrogen' => $validated['nitrogen'],
-                    'phosphorus' => $validated['phosphorus'],
-                    'potassium' => $validated['potassium'],
-                    'npk_source' => 'manual',
-                ]);
-            } else {
-                $reading = SensorReading::create([
-                    'soil_sample_id' => $sample->id,
-                    'device_id' => $sample->device_id,
-                    'nitrogen' => $validated['nitrogen'],
-                    'phosphorus' => $validated['phosphorus'],
-                    'potassium' => $validated['potassium'],
-                    'npk_source' => 'manual',
-                    'is_valid' => true,
-                    'recorded_at' => Carbon::now(),
-                    'data_source' => $sample->source_type ?: 'manual',
-                ]);
-                $sample->setRelation('latestReading', $reading);
             }
 
             $fertilizerService->recommend(
@@ -310,7 +291,7 @@ class SoilSenseController extends Controller
         });
 
         return redirect()->route('report', ['id' => $sample->sample_code])
-            ->with('success', "Manual N-P-K telemetry saved and fertilizer recommendation generated for {$sample->sample_code}.");
+            ->with('success', "Fertilizer recommendation recalculated for {$sample->sample_code}.");
     }
 
     /**
@@ -426,13 +407,14 @@ class SoilSenseController extends Controller
         $assessment = $sample->latestAssessment;
         $fertilizerRecommendation = $reading?->latestFertilizerRecommendation;
 
-        if (
-            $reading
-            && $reading->nitrogen !== null
-            && $reading->phosphorus !== null
-            && $reading->potassium !== null
-            && !$fertilizerRecommendation
-        ) {
+        $hasUsableTelemetry = $reading && (
+            $reading->ph !== null
+            || $reading->moisture !== null
+            || $reading->temperature !== null
+            || $reading->ec !== null
+        );
+
+        if ($hasUsableTelemetry && !$fertilizerRecommendation) {
             try {
                 $fertilizerRecommendation = app(FertilizerRecommendationService::class)->recommend(
                     $sample,
@@ -555,38 +537,42 @@ class SoilSenseController extends Controller
             $query->whereDate('collected_at', $request->date);
         }
 
-        // Build chronological N-P-K trend series across matching samples (oldest to newest)
+        // Build chronological 4-sensor trend series across matching samples (oldest to newest)
         $trendSamples = (clone $query)
             ->orderBy('collected_at', 'asc')
             ->get();
 
         $trendLabels = [];
-        $trendNitrogen = [];
-        $trendPhosphorus = [];
-        $trendPotassium = [];
-        $hasNpkData = false;
+        $trendPh = [];
+        $trendEc = [];
+        $trendMoisture = [];
+        $trendTemperature = [];
+        $hasSensorData = false;
 
         foreach ($trendSamples as $trendSample) {
             $r = $trendSample->latestReading;
-            $n = $r && $r->nitrogen !== null ? round((float) $r->nitrogen, 1) : null;
-            $p = $r && $r->phosphorus !== null ? round((float) $r->phosphorus, 1) : null;
-            $k = $r && $r->potassium !== null ? round((float) $r->potassium, 1) : null;
+            $ph = $r && $r->ph !== null ? round((float) $r->ph, 2) : null;
+            $ec = $r && $r->ec !== null ? round((float) $r->ec, 2) : null;
+            $moisture = $r && $r->moisture !== null ? round((float) $r->moisture, 1) : null;
+            $temperature = $r && $r->temperature !== null ? round((float) $r->temperature, 1) : null;
 
-            if ($n !== null || $p !== null || $k !== null) {
-                $hasNpkData = true;
+            if ($ph !== null || $ec !== null || $moisture !== null || $temperature !== null) {
+                $hasSensorData = true;
                 $trendLabels[] = $trendSample->sample_code . ' (' . $trendSample->collected_at->format('M d') . ')';
-                $trendNitrogen[] = $n;
-                $trendPhosphorus[] = $p;
-                $trendPotassium[] = $k;
+                $trendPh[] = $ph;
+                $trendEc[] = $ec;
+                $trendMoisture[] = $moisture;
+                $trendTemperature[] = $temperature;
             }
         }
 
-        $npkTrend = [
+        $sensorTrend = [
             'labels' => $trendLabels,
-            'nitrogen' => $trendNitrogen,
-            'phosphorus' => $trendPhosphorus,
-            'potassium' => $trendPotassium,
-            'has_data' => $hasNpkData,
+            'ph' => $trendPh,
+            'ec' => $trendEc,
+            'moisture' => $trendMoisture,
+            'temperature' => $trendTemperature,
+            'has_data' => $hasSensorData,
         ];
 
         $paginated = $query->latest('collected_at')->paginate(10)->withQueryString();
@@ -615,16 +601,6 @@ class SoilSenseController extends Controller
                 $topCrops = $matched ?: 'Limited compatibility';
             }
 
-            $hasNpk = $r && ($r->nitrogen !== null || $r->phosphorus !== null || $r->potassium !== null);
-            $npkSummary = $hasNpk
-                ? sprintf(
-                    'N %s · P %s · K %s',
-                    $r->nitrogen !== null ? number_format((float) $r->nitrogen, 0) : '—',
-                    $r->phosphorus !== null ? number_format((float) $r->phosphorus, 0) : '—',
-                    $r->potassium !== null ? number_format((float) $r->potassium, 0) : '—'
-                )
-                : 'Not recorded';
-
             return [
                 'id' => $s->sample_code,
                 'name' => $s->name,
@@ -634,11 +610,6 @@ class SoilSenseController extends Controller
                 'moisture' => $r && $r->moisture !== null ? "{$r->moisture} {$r->moisture_unit}" : '—',
                 'temperature' => $r && $r->temperature !== null ? "{$r->temperature}°C" : '—',
                 'ec' => $r && $r->ec !== null ? "{$r->ec} {$r->ec_unit}" : 'Pending',
-                'nitrogen' => $r && $r->nitrogen !== null ? round((float) $r->nitrogen, 1) : null,
-                'phosphorus' => $r && $r->phosphorus !== null ? round((float) $r->phosphorus, 1) : null,
-                'potassium' => $r && $r->potassium !== null ? round((float) $r->potassium, 1) : null,
-                'npk_source' => $r?->npk_source,
-                'npk_summary' => $npkSummary,
                 'fertilizer' => $fert?->predicted_fertilizer,
                 'assessment' => ucfirst($s->assessment_status),
                 'device' => $s->device?->name ?? 'ESP32-01',
@@ -651,7 +622,7 @@ class SoilSenseController extends Controller
             'title' => 'Sample History',
             'samples' => $samples,
             'paginator' => $paginated,
-            'npkTrend' => $npkTrend,
+            'sensorTrend' => $sensorTrend,
         ]);
     }
 

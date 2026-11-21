@@ -39,108 +39,121 @@ class FertilizerPredictionServiceTest extends TestCase
             'moisture' => 45.0,
             'moisture_unit' => '% VWC',
             'temperature' => 26.5,
-            'nitrogen' => 45.0,
-            'phosphorus' => 50.0,
-            'potassium' => 60.0,
             'calibration_metadata' => ['calibrated' => true],
         ], $overrides));
     }
 
-    public function test_calls_fastapi_ml_service_with_api_key_and_crop_alias_mapping(): void
+    public function test_calls_fastapi_ml_service_with_4_sensor_payload_api_key_and_crop_alias_mapping(): void
     {
         Http::fake([
             'http://ml.soilsense.test/predict' => Http::response([
-                'predicted_fertilizer' => 'Urea',
+                'predicted_fertilizer' => 'Compost',
                 'confidence' => 0.91,
                 'low_confidence' => false,
                 'top_predictions' => [
-                    ['fertilizer' => 'Urea', 'probability' => 0.91],
+                    ['fertilizer' => 'Compost', 'probability' => 0.91],
                     ['fertilizer' => 'NPK', 'probability' => 0.06],
-                    ['fertilizer' => 'DAP', 'probability' => 0.03],
+                    ['fertilizer' => 'Zinc Sulphate', 'probability' => 0.03],
                 ],
-                'model_version' => 'gb-v1.0',
+                'model_version' => 'rf-4sensor-v1.0',
                 'crop_mapped_from' => 'Sweet Corn',
                 'warnings' => [],
             ], 200),
         ]);
 
-        $reading = $this->makeValidReading();
+        $reading = $this->makeValidReading(['ph' => 5.1]);
         $sample = new SoilSample(['soil_type' => 'clay']);
 
         $result = $this->service->predict($reading, 'Sweet Corn', $sample);
 
         Http::assertSent(function (Request $request) {
+            $body = $request->data();
+
             return $request->url() === 'http://ml.soilsense.test/predict'
                 && $request->hasHeader('X-API-KEY', 'test-ml-api-key')
                 && $request->hasHeader('Accept', 'application/json')
-                && $request['crop'] === 'Maize'
-                && $request['soil_type'] === 'Clay'
-                && $request['n'] === 45.0
-                && $request['p'] === 50.0
-                && $request['k'] === 60.0
-                && $request['ph'] === 6.4
-                && $request['ec'] === 1.2
-                && $request['moisture'] === 45.0
-                && $request['temperature'] === 26.5;
+                && !array_key_exists('n', $body)
+                && !array_key_exists('p', $body)
+                && !array_key_exists('k', $body)
+                && $body['crop'] === 'Maize'
+                && $body['soil_type'] === 'Clay'
+                && $body['ph'] === 5.1
+                && $body['ec'] === 1.2
+                && $body['moisture'] === 45.0
+                && $body['temperature'] === 26.5;
         });
 
         $this->assertFalse($result['fallback_used']);
         $this->assertNull($result['fallback_reason']);
-        $this->assertSame('Urea', $result['predicted_fertilizer']);
+        $this->assertSame('Compost', $result['predicted_fertilizer']);
         $this->assertEquals(0.91, $result['confidence']);
-        $this->assertSame('gb-v1.0', $result['model_version']);
+        $this->assertSame('rf-4sensor-v1.0', $result['model_version']);
         $this->assertSame('Sweet Corn', $result['crop_mapped_from']);
         $this->assertCount(3, $result['top_predictions']);
     }
 
-    public function test_rejects_uncalibrated_moisture_units_before_calling_ml(): void
+    public function test_uncalibrated_moisture_uses_rule_fallback_without_calling_ml(): void
     {
         Http::fake();
 
         foreach (['raw index', 'adc', 'raw', ''] as $unit) {
-            $reading = $this->makeValidReading(['moisture_unit' => $unit]);
+            $reading = $this->makeValidReading(['moisture_unit' => $unit, 'ph' => 5.1]);
 
-            try {
-                $this->service->predict($reading, 'Tomato');
-                $this->fail("Expected InvalidArgumentException for moisture_unit='{$unit}'");
-            } catch (InvalidArgumentException $e) {
-                $this->assertStringContainsString('Uncalibrated soil moisture', $e->getMessage());
-            }
+            $result = $this->service->predict($reading, 'Tomato');
+
+            $this->assertTrue($result['fallback_used']);
+            $this->assertSame(FertilizerPredictionService::FALLBACK_MODEL_VERSION, $result['model_version']);
+            $this->assertSame('Compost', $result['predicted_fertilizer']);
+            $this->assertStringContainsString('Uncalibrated soil moisture', (string) $result['fallback_reason']);
         }
 
         $uncalibratedMetaReading = $this->makeValidReading([
             'moisture_unit' => '% VWC',
             'calibration_metadata' => ['calibrated' => false],
+            'ph' => 8.1,
         ]);
 
-        try {
-            $this->service->predict($uncalibratedMetaReading, 'Tomato');
-            $this->fail('Expected InvalidArgumentException when calibration_metadata.calibrated is false');
-        } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('Uncalibrated soil moisture', $e->getMessage());
-        }
+        $metaResult = $this->service->predict($uncalibratedMetaReading, 'Tomato');
+        $this->assertTrue($metaResult['fallback_used']);
+        $this->assertSame('Zinc Sulphate', $metaResult['predicted_fertilizer']);
+        $this->assertStringContainsString('Uncalibrated soil moisture', (string) $metaResult['fallback_reason']);
 
         Http::assertNothingSent();
     }
 
-    public function test_rejects_missing_npk_or_sensor_fields_before_calling_ml(): void
+    public function test_missing_4_sensor_fields_use_rule_fallback_without_calling_ml(): void
     {
         Http::fake();
 
-        $missingNpk = $this->makeValidReading(['nitrogen' => null]);
+        $missingEc = $this->makeValidReading(['ec' => null, 'ph' => 6.4]);
+        $result = $this->service->predict($missingEc, 'Tomato');
+
+        $this->assertTrue($result['fallback_used']);
+        $this->assertSame(FertilizerPredictionService::FALLBACK_MODEL_VERSION, $result['model_version']);
+        $this->assertSame('NPK', $result['predicted_fertilizer']);
+        $this->assertStringContainsString('Incomplete 4-sensor telemetry', (string) $result['fallback_reason']);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_rejects_out_of_bounds_sensor_values_before_calling_ml(): void
+    {
+        Http::fake();
+
+        $invalidPh = $this->makeValidReading(['ph' => 15.2]);
         try {
-            $this->service->predict($missingNpk, 'Tomato');
-            $this->fail('Expected InvalidArgumentException for missing nitrogen');
+            $this->service->predict($invalidPh, 'Tomato');
+            $this->fail('Expected InvalidArgumentException for out-of-bounds pH');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('N-P-K', $e->getMessage());
+            $this->assertStringContainsString('Soil pH', $e->getMessage());
         }
 
-        $missingEc = $this->makeValidReading(['ec' => null]);
+        $invalidEc = $this->makeValidReading(['ec' => -1.0]);
         try {
-            $this->service->predict($missingEc, 'Tomato');
-            $this->fail('Expected InvalidArgumentException for missing EC');
+            $this->service->predict($invalidEc, 'Tomato');
+            $this->fail('Expected InvalidArgumentException for negative EC');
         } catch (InvalidArgumentException $e) {
-            $this->assertStringContainsString('sensor parameters', $e->getMessage());
+            $this->assertStringContainsString('Electrical conductivity', $e->getMessage());
         }
 
         Http::assertNothingSent();
@@ -151,13 +164,13 @@ class FertilizerPredictionServiceTest extends TestCase
         Config::set('fertilizer.ml_service.api_key', '');
         Http::fake();
 
-        $reading = $this->makeValidReading(['nitrogen' => 35.0]);
+        $reading = $this->makeValidReading(['ph' => 5.2]);
         $result = $this->service->predict($reading, 'Tomato');
 
         Http::assertNothingSent();
         $this->assertTrue($result['fallback_used']);
         $this->assertSame(FertilizerPredictionService::FALLBACK_MODEL_VERSION, $result['model_version']);
-        $this->assertSame('Urea', $result['predicted_fertilizer']);
+        $this->assertSame('Compost', $result['predicted_fertilizer']);
         $this->assertStringContainsString('API key', (string) $result['fallback_reason']);
         $this->assertCount(3, $result['top_predictions']);
     }
@@ -168,11 +181,11 @@ class FertilizerPredictionServiceTest extends TestCase
             'http://ml.soilsense.test/predict' => Http::response(['error' => 'server_error'], 500),
         ]);
 
-        $reading = $this->makeValidReading(['nitrogen' => 75.0, 'phosphorus' => 25.0]);
+        $reading = $this->makeValidReading(['ph' => 8.1, 'ec' => 1.0]);
         $result = $this->service->predict($reading, 'Tomato');
 
         $this->assertTrue($result['fallback_used']);
-        $this->assertSame('DAP', $result['predicted_fertilizer']);
+        $this->assertSame('Zinc Sulphate', $result['predicted_fertilizer']);
         $this->assertSame(FertilizerPredictionService::FALLBACK_MODEL_VERSION, $result['model_version']);
         $this->assertStringContainsString('HTTP 500', (string) $result['fallback_reason']);
 
@@ -185,7 +198,7 @@ class FertilizerPredictionServiceTest extends TestCase
         $timeoutResult = $this->service->predict($reading, 'Tomato');
 
         $this->assertTrue($timeoutResult['fallback_used']);
-        $this->assertSame('DAP', $timeoutResult['predicted_fertilizer']);
+        $this->assertSame('Zinc Sulphate', $timeoutResult['predicted_fertilizer']);
         $this->assertStringContainsString('timed out', (string) $timeoutResult['fallback_reason']);
     }
 
@@ -201,36 +214,33 @@ class FertilizerPredictionServiceTest extends TestCase
                     ['fertilizer' => 'NPK', 'probability' => 0.35],
                     ['fertilizer' => 'DAP', 'probability' => 0.23],
                 ],
-                'model_version' => 'gb-v1.0',
+                'model_version' => 'rf-4sensor-v1.0',
             ], 200),
         ]);
 
         $reading = $this->makeValidReading([
-            'nitrogen' => 70.0,
-            'phosphorus' => 55.0,
-            'potassium' => 30.0,
+            'ph' => 6.6,
+            'ec' => 3.1,
         ]);
 
         $result = $this->service->predict($reading, 'Tomato');
 
         $this->assertTrue($result['fallback_used']);
-        $this->assertSame('MOP', $result['predicted_fertilizer']);
+        $this->assertSame('Compost', $result['predicted_fertilizer']);
         $this->assertSame(FertilizerPredictionService::FALLBACK_MODEL_VERSION, $result['model_version']);
         $this->assertStringContainsString('below threshold', (string) $result['fallback_reason']);
     }
 
-    public function test_deterministic_fallback_covers_all_agronomic_rule_branches(): void
+    public function test_deterministic_fallback_covers_all_4_sensor_agronomic_rule_branches(): void
     {
         Config::set('fertilizer.ml_service.api_key', '');
         Http::fake();
 
         $cases = [
-            ['overrides' => ['nitrogen' => 59.0, 'phosphorus' => 50.0, 'potassium' => 50.0, 'ph' => 6.5], 'expected' => 'Urea'],
-            ['overrides' => ['nitrogen' => 60.0, 'phosphorus' => 39.0, 'potassium' => 50.0, 'ph' => 6.5], 'expected' => 'DAP'],
-            ['overrides' => ['nitrogen' => 60.0, 'phosphorus' => 40.0, 'potassium' => 39.0, 'ph' => 6.5], 'expected' => 'MOP'],
-            ['overrides' => ['nitrogen' => 60.0, 'phosphorus' => 40.0, 'potassium' => 40.0, 'ph' => 5.4], 'expected' => 'Compost'],
-            ['overrides' => ['nitrogen' => 60.0, 'phosphorus' => 40.0, 'potassium' => 40.0, 'ph' => 7.9], 'expected' => 'Zinc Sulphate'],
-            ['overrides' => ['nitrogen' => 60.0, 'phosphorus' => 40.0, 'potassium' => 40.0, 'ph' => 6.5], 'expected' => 'NPK'],
+            ['overrides' => ['ph' => 5.4, 'ec' => 1.0], 'expected' => 'Compost'],
+            ['overrides' => ['ph' => 7.9, 'ec' => 1.0], 'expected' => 'Zinc Sulphate'],
+            ['overrides' => ['ph' => 6.5, 'ec' => 2.6], 'expected' => 'Compost'],
+            ['overrides' => ['ph' => 6.5, 'ec' => 1.2], 'expected' => 'NPK'],
         ];
 
         foreach ($cases as $case) {

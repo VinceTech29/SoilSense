@@ -51,10 +51,6 @@ class SoilSampleSeeder extends Seeder
                 'temperature' => 28.00,
                 'ec' => null, // Pending - no fake zero
                 'ec_unit' => 'mS/cm',
-                'nitrogen' => 45.0,
-                'phosphorus' => 32.0,
-                'potassium' => 58.0,
-                'npk_source' => 'demo',
                 'is_valid' => true,
                 'validity_notes' => 'pH and temperature verified; moisture uncalibrated analog index; EC awaiting sensor probe connection',
                 'calibration_metadata' => [
@@ -134,10 +130,6 @@ class SoilSampleSeeder extends Seeder
                 'temperature' => 24.00,
                 'ec' => 1.20,
                 'ec_unit' => 'mS/cm',
-                'nitrogen' => 82.0,
-                'phosphorus' => 54.0,
-                'potassium' => 76.0,
-                'npk_source' => 'demo',
                 'is_valid' => true,
                 'validity_notes' => 'Complete calibrated 4-channel telemetry record',
                 'calibration_metadata' => [
@@ -182,10 +174,6 @@ class SoilSampleSeeder extends Seeder
                 'temperature' => 32.00,
                 'ec' => 3.80,
                 'ec_unit' => 'mS/cm',
-                'nitrogen' => 38.0,
-                'phosphorus' => 28.0,
-                'potassium' => 35.0,
-                'npk_source' => 'demo',
                 'is_valid' => true,
                 'recorded_at' => Carbon::parse('2025-05-03 16:22:00'),
                 'data_source' => 'demo',

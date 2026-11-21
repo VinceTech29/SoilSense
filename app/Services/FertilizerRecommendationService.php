@@ -29,7 +29,8 @@ class FertilizerRecommendationService
     ) {}
 
     /**
-     * Generate and persist a fertilizer recommendation for the top suitable crop (or explicit crop override).
+     * Generate and persist a fertilizer recommendation for the top suitable crop (or explicit crop override)
+     * directly from SoilSense's 4-sensor telemetry and Open-Meteo 72h Rain Guard.
      */
     public function recommend(
         SoilSample $sample,
@@ -57,9 +58,14 @@ class FertilizerRecommendationService
             throw new InvalidArgumentException('A sensor reading is required to generate a fertilizer recommendation.');
         }
 
-        if ($reading->nitrogen === null || $reading->phosphorus === null || $reading->potassium === null) {
+        if (
+            $reading->ph === null
+            && $reading->ec === null
+            && $reading->moisture === null
+            && $reading->temperature === null
+        ) {
             throw new InvalidArgumentException(
-                'Soil N-P-K values (nitrogen, phosphorus, potassium) are required to generate a fertilizer recommendation.'
+                'At least one soil sensor measurement (pH, moisture, temperature, or EC) is required to generate a fertilizer recommendation.'
             );
         }
 
@@ -70,18 +76,7 @@ class FertilizerRecommendationService
             $recommendations = collect();
 
             foreach ($targetCrops as $targetCrop) {
-                try {
-                    $prediction = $this->predictionService->predict($reading, $targetCrop, $sample);
-                } catch (InvalidArgumentException $e) {
-                    if ((float) $reading->nitrogen < 0.0 || (float) $reading->phosphorus < 0.0 || (float) $reading->potassium < 0.0) {
-                        throw $e;
-                    }
-                    $prediction = $this->predictionService->predictWithRuleFallback(
-                        $reading,
-                        $targetCrop,
-                        $e->getMessage()
-                    );
-                }
+                $prediction = $this->predictionService->predict($reading, $targetCrop, $sample);
 
                 $dosage = $this->dosageCalculator->calculate(
                     $prediction['predicted_fertilizer'],

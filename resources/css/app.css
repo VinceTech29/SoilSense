@@ -594,7 +594,7 @@ footer > small { grid-column: 1 / -1; padding-top: 20px; border-top: 1px solid #
   .form-grid .full { grid-column: auto; }
 }
 
-/* Fertilizer Recommendation Module & N-P-K UI */
+/* Fertilizer Recommendation Module & 4-Sensor Trend UI */
 .notice.success { background: var(--green-50); border-color: #bbf7d0; color: var(--green-800); }
 .notice.success span { color: #166534; }
 
@@ -612,13 +612,13 @@ footer > small { grid-column: 1 / -1; padding-top: 20px; border-top: 1px solid #
 .fert-stat.primary b { color: var(--green-800); }
 .fert-stat small { display: block; margin-top: 5px; font-size: 11px; color: var(--muted); }
 
-.npk-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 15px; border: 1px solid var(--line); border-radius: 11px; background: #fbfdfb; margin-bottom: 18px; }
-.npk-pills { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.npk-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 8px; background: white; border: 1px solid var(--line); font-size: 12px; }
-.npk-pill strong { font-family: Manrope, sans-serif; color: #0f172a; }
-.npk-pill .dot-n { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; }
-.npk-pill .dot-p { width: 8px; height: 8px; border-radius: 50%; background: #2563eb; }
-.npk-pill .dot-k { width: 8px; height: 8px; border-radius: 50%; background: #d97706; }
+.sensor-pills { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sensor-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 8px; background: white; border: 1px solid var(--line); font-size: 12px; }
+.sensor-pill strong { font-family: Manrope, sans-serif; color: #0f172a; }
+.sensor-pill .dot-ph { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; }
+.sensor-pill .dot-ec { width: 8px; height: 8px; border-radius: 50%; background: #7c3aed; }
+.sensor-pill .dot-moisture { width: 8px; height: 8px; border-radius: 50%; background: #2563eb; }
+.sensor-pill .dot-temp { width: 8px; height: 8px; border-radius: 50%; background: #d97706; }
 
 .rain-banner { display: flex; align-items: flex-start; gap: 13px; padding: 14px 16px; border-radius: 11px; border: 1px solid; margin-bottom: 18px; }
 .rain-banner > svg { flex: 0 0 auto; margin-top: 2px; }
@@ -651,38 +651,38 @@ footer > small { grid-column: 1 / -1; padding-top: 20px; border-top: 1px solid #
 .split-table td { padding: 9px 10px; font-size: 12px; }
 .split-note { margin: 10px 0 0; font-size: 11px; color: var(--muted); }
 
-.npk-empty-state { padding: 18px; border: 1px dashed #cbd5e1; border-radius: 12px; background: #f8fafc; margin-bottom: 18px; }
-.npk-empty-state h3 { font-size: 16px; margin-bottom: 6px; color: #0f172a; }
-.npk-empty-state p { margin-bottom: 14px; font-size: 12px; }
+.fert-empty-state { padding: 18px; border: 1px dashed #cbd5e1; border-radius: 12px; background: #f8fafc; margin-bottom: 18px; }
+.fert-empty-state h3 { font-size: 16px; margin-bottom: 6px; color: #0f172a; }
+.fert-empty-state p { margin-bottom: 14px; font-size: 12px; }
 
-.npk-update-details { border: 1px solid var(--line); border-radius: 11px; background: #f8fafc; padding: 12px 16px; margin-bottom: 18px; }
-.npk-update-details summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--green-800); list-style: none; display: flex; align-items: center; justify-content: space-between; }
-.npk-update-details summary::-webkit-details-marker { display: none; }
-.npk-form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
-.npk-form-grid label { display: grid; gap: 5px; font-size: 11px; font-weight: 700; color: #475569; }
-.npk-form-grid input, .npk-form-grid select { width: 100%; min-width: 0; }
-.npk-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.fert-recalc-details { border: 1px solid var(--line); border-radius: 11px; background: #f8fafc; padding: 12px 16px; margin-bottom: 18px; }
+.fert-recalc-details summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--green-800); list-style: none; display: flex; align-items: center; justify-content: space-between; }
+.fert-recalc-details summary::-webkit-details-marker { display: none; }
+.fert-form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 14px; }
+.fert-form-grid label { display: grid; gap: 5px; font-size: 11px; font-weight: 700; color: #475569; }
+.fert-form-grid input, .fert-form-grid select { width: 100%; min-width: 0; }
+.fert-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
 .field-error { color: var(--red); font-size: 11px; font-weight: 600; margin-top: 2px; }
 
 .agronomic-disclaimer { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 10px; background: #f8fafc; border: 1px solid var(--line); color: #475569; font-size: 11px; line-height: 1.5; }
 .agronomic-disclaimer svg { flex: 0 0 auto; color: var(--amber); margin-top: 1px; }
 .agronomic-disclaimer b { color: #1e293b; }
 
-/* Analysis optional N-P-K block */
-.npk-optional-panel { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
-.npk-optional-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
-.npk-optional-head h3 { margin: 0; font-size: 14px; color: #0f172a; }
-.npk-optional-panel > p { margin: 0 0 12px; font-size: 11px; }
+/* Analysis optional soil type block */
+.soil-optional-panel { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.soil-optional-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.soil-optional-head h3 { margin: 0; font-size: 14px; color: #0f172a; }
+.soil-optional-panel > p { margin: 0 0 12px; font-size: 11px; }
 
-/* History N-P-K Trend Chart */
-.npk-trend-card { padding: 20px; margin-bottom: 18px; }
-.npk-trend-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
-.npk-trend-head h2 { margin-bottom: 4px; }
-.npk-trend-head p { margin: 0; font-size: 12px; }
-.npk-chart-container { position: relative; height: 260px; width: 100%; }
+/* History 4-Sensor Trend Chart */
+.sensor-trend-card { padding: 20px; margin-bottom: 18px; }
+.sensor-trend-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.sensor-trend-head h2 { margin-bottom: 4px; }
+.sensor-trend-head p { margin: 0; font-size: 12px; }
+.sensor-chart-container { position: relative; height: 260px; width: 100%; }
 
 @media (max-width: 900px) {
   .fertilizer-hero { grid-template-columns: 1fr; }
   .fertilizer-grid { grid-template-columns: 1fr; }
-  .npk-form-grid { grid-template-columns: 1fr; }
+  .fert-form-grid { grid-template-columns: 1fr; }
 }

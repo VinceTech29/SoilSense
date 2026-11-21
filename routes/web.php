@@ -17,7 +17,7 @@ Route::post('/analysis', [SoilSenseController::class, 'storeSample'])->name('sam
 Route::get('/crops', [SoilSenseController::class, 'crops'])->name('crops');
 Route::get('/crops/{name}', [SoilSenseController::class, 'cropDetail'])->name('crop.detail');
 Route::get('/report/{id?}', [SoilSenseController::class, 'report'])->name('report');
-Route::post('/report/{id}/npk', [SoilSenseController::class, 'storeManualNpk'])->name('report.npk.store');
+Route::post('/report/{id}/fertilizer', [SoilSenseController::class, 'refreshFertilizer'])->name('report.fertilizer.refresh');
 Route::get('/history', [SoilSenseController::class, 'history'])->name('history');
 Route::get('/reports', [SoilSenseController::class, 'reports'])->name('reports');
 Route::get('/device', [SoilSenseController::class, 'device'])->name('device');

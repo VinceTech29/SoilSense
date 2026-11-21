@@ -14,8 +14,6 @@ class FertilizerRecommendationResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $reading = $this->reading;
-
         return [
             'id' => $this->id,
             'reading_id' => $this->reading_id,
@@ -28,12 +26,6 @@ class FertilizerRecommendationResource extends JsonResource
             'rain_advisory' => $this->rain_advisory,
             'model_version' => $this->model_version,
             'fallback_used' => (bool) $this->fallback_used,
-            'npk' => [
-                'nitrogen' => $reading?->nitrogen !== null ? (float) $reading->nitrogen : null,
-                'phosphorus' => $reading?->phosphorus !== null ? (float) $reading->phosphorus : null,
-                'potassium' => $reading?->potassium !== null ? (float) $reading->potassium : null,
-                'npk_source' => $reading?->npk_source,
-            ],
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

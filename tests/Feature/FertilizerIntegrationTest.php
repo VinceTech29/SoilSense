@@ -4,9 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\FertilizerRecommendation;
 use App\Models\IotDevice;
-use App\Models\SensorReading;
 use App\Models\SoilSample;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
@@ -37,15 +37,15 @@ class FertilizerIntegrationTest extends TestCase
 
         Http::fake([
             'http://ml.soilsense.test/predict' => Http::response([
-                'predicted_fertilizer' => 'Urea',
+                'predicted_fertilizer' => 'Compost',
                 'confidence' => 0.89,
                 'low_confidence' => false,
                 'top_predictions' => [
-                    ['fertilizer' => 'Urea', 'probability' => 0.89],
+                    ['fertilizer' => 'Compost', 'probability' => 0.89],
                     ['fertilizer' => 'NPK', 'probability' => 0.08],
-                    ['fertilizer' => 'DAP', 'probability' => 0.03],
+                    ['fertilizer' => 'Zinc Sulphate', 'probability' => 0.03],
                 ],
-                'model_version' => 'gb-v1.0',
+                'model_version' => 'rf-4sensor-v1.0',
                 'crop_mapped_from' => null,
                 'warnings' => [],
             ], 200),
@@ -59,9 +59,8 @@ class FertilizerIntegrationTest extends TestCase
         ]);
     }
 
-    public function test_esp32_readings_endpoint_ingests_npk_and_generates_fertilizer_recommendation(): void
+    public function test_esp32_readings_endpoint_generates_fertilizer_recommendation_from_4_sensors(): void
     {
-        // Use a live (non-demo) device to verify 'sensor' npk_source, as well as demo device for 'demo'
         $liveDevice = IotDevice::create([
             'device_uid' => 'ESP32-LIVE-01',
             'name' => 'Live Field Node',
@@ -76,98 +75,78 @@ class FertilizerIntegrationTest extends TestCase
         ])->postJson('/api/v1/readings', [
             'sample_id' => $this->sampleCode,
             'device_id' => $liveDevice->device_uid,
-            'ph' => 6.4,
+            'ph' => 5.2,
             'moisture_percent' => 52.0,
             'temperature_c' => 26.5,
             'ec_ms_cm' => 1.35,
-            'n' => 42.0,
-            'p' => 48.0,
-            'k' => 65.0,
             'recorded_at' => Carbon::now()->toIso8601String(),
         ]);
 
         $response->assertStatus(201)
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.measurements.nitrogen.value', 42)
-            ->assertJsonPath('data.measurements.nitrogen.source', 'sensor')
-            ->assertJsonPath('data.fertilizer_recommendation.predicted_fertilizer', 'Urea')
-            ->assertJsonPath('data.fertilizer_recommendation.model_version', 'gb-v1.0')
+            ->assertJsonPath('data.assessment.triggered', true)
+            ->assertJsonPath('data.fertilizer_recommendation.predicted_fertilizer', 'Compost')
+            ->assertJsonPath('data.fertilizer_recommendation.model_version', 'rf-4sensor-v1.0')
             ->assertJsonPath('data.fertilizer_recommendation.fallback_used', false)
-            ->assertJsonPath('data.fertilizer_recommendation.npk.nitrogen', 42)
-            ->assertJsonPath('data.fertilizer_recommendation.npk.phosphorus', 48)
-            ->assertJsonPath('data.fertilizer_recommendation.npk.potassium', 65)
-            ->assertJsonPath('data.fertilizer_recommendation.npk.npk_source', 'sensor')
             ->assertJsonPath('data.fertilizer_recommendation.rain_advisory.status', 'proceed');
 
-        $readingId = $response->json('data.reading_id');
-        $this->assertDatabaseHas('sensor_readings', [
-            'id' => $readingId,
-            'nitrogen' => 42.0,
-            'phosphorus' => 48.0,
-            'potassium' => 65.0,
-            'npk_source' => 'sensor',
-        ]);
+        $measurements = $response->json('data.measurements');
+        $this->assertArrayNotHasKey('nitrogen', $measurements);
+        $this->assertArrayNotHasKey('phosphorus', $measurements);
+        $this->assertArrayNotHasKey('potassium', $measurements);
 
+        $fertRec = $response->json('data.fertilizer_recommendation');
+        $this->assertArrayNotHasKey('npk', $fertRec);
+
+        $readingId = $response->json('data.reading_id');
         $this->assertDatabaseHas('fertilizer_recommendations', [
             'reading_id' => $readingId,
-            'predicted_fertilizer' => 'Urea',
-            'model_version' => 'gb-v1.0',
+            'predicted_fertilizer' => 'Compost',
+            'model_version' => 'rf-4sensor-v1.0',
         ]);
+
+        Http::assertSent(function (Request $request) {
+            if ($request->url() !== 'http://ml.soilsense.test/predict') {
+                return false;
+            }
+            $body = $request->data();
+            return !array_key_exists('n', $body)
+                && !array_key_exists('p', $body)
+                && !array_key_exists('k', $body)
+                && $body['ph'] === 5.2
+                && $body['ec'] === 1.35;
+        });
     }
 
-    public function test_esp32_readings_endpoint_is_backward_compatible_without_npk(): void
+    public function test_esp32_readings_endpoint_skips_fertilizer_when_assessment_not_triggered(): void
     {
+        SoilSample::create([
+            'sample_code' => 'SS-SPARSE-001',
+            'name' => 'Sparse Probe Sample',
+            'collected_at' => Carbon::now(),
+            'testing_method' => 'prototype_sensor',
+            'source_type' => 'demo',
+            'assessment_status' => 'incomplete',
+        ]);
+
         $response = $this->withHeaders([
             'Authorization' => 'Bearer ' . $this->validToken,
             'Accept' => 'application/json',
         ])->postJson('/api/v1/readings', [
-            'sample_id' => $this->sampleCode,
+            'sample_id' => 'SS-SPARSE-001',
             'device_id' => $this->deviceUid,
             'ph' => 6.3,
-            'moisture_percent' => 50.0,
-            'temperature_c' => 25.5,
-            'ec_ms_cm' => 1.2,
         ]);
 
         $response->assertStatus(201)
             ->assertJsonPath('success', true)
+            ->assertJsonPath('data.assessment.triggered', false)
             ->assertJsonPath('data.fertilizer_recommendation', null);
-
-        $readingId = $response->json('data.reading_id');
-        $reading = SensorReading::findOrFail($readingId);
-        $this->assertNull($reading->nitrogen);
-        $this->assertNull($reading->phosphorus);
-        $this->assertNull($reading->potassium);
-        $this->assertNull($reading->npk_source);
     }
 
-    public function test_esp32_readings_endpoint_rejects_out_of_range_npk_with_422(): void
+    public function test_web_fertilizer_refresh_endpoint_recalculates_without_npk_and_validates_inputs(): void
     {
-        $response = $this->withHeaders([
-            'Authorization' => 'Bearer ' . $this->validToken,
-            'Accept' => 'application/json',
-        ])->postJson('/api/v1/readings', [
-            'sample_id' => $this->sampleCode,
-            'device_id' => $this->deviceUid,
-            'ph' => 6.4,
-            'n' => -5.0,
-            'p' => 550.0,
-            'k' => 'invalid',
-        ]);
-
-        $response->assertStatus(422)
-            ->assertJsonPath('success', false)
-            ->assertJsonPath('code', 'VALIDATION_FAILED')
-            ->assertJsonValidationErrors(['n', 'p', 'k']);
-    }
-
-    public function test_web_manual_npk_submission_valid_and_invalid_ranges(): void
-    {
-        // Valid submission on SS-2025-016 (complete 4-channel calibrated reading)
-        $validResponse = $this->post('/report/SS-2025-016/npk', [
-            'nitrogen' => 40.0,
-            'phosphorus' => 52.0,
-            'potassium' => 68.0,
+        $validResponse = $this->post('/report/SS-2025-016/fertilizer', [
             'crop' => 'Tomato',
             'soil_type' => 'Clay',
             'latitude' => 14.2000,
@@ -183,30 +162,24 @@ class FertilizerIntegrationTest extends TestCase
         $this->assertEquals(121.2500, $sample->longitude);
 
         $reading = $sample->latestReading()->firstOrFail();
-        $this->assertEquals(40.0, $reading->nitrogen);
-        $this->assertEquals(52.0, $reading->phosphorus);
-        $this->assertEquals(68.0, $reading->potassium);
-        $this->assertSame('manual', $reading->npk_source);
-
         $this->assertDatabaseHas('fertilizer_recommendations', [
             'reading_id' => $reading->id,
             'crop' => 'Tomato',
-            'predicted_fertilizer' => 'Urea',
+            'predicted_fertilizer' => 'Compost',
         ]);
 
-        // Invalid range submission (> 500 or < 0)
-        $invalidResponse = $this->from('/report/SS-2025-016')->post('/report/SS-2025-016/npk', [
-            'nitrogen' => 600.0,
-            'phosphorus' => -10.0,
-            'potassium' => '',
+        // Invalid soil_type and coordinates
+        $invalidResponse = $this->from('/report/SS-2025-016')->post('/report/SS-2025-016/fertilizer', [
             'soil_type' => 'InvalidType',
+            'latitude' => 120.0,
+            'longitude' => -200.0,
         ]);
 
         $invalidResponse->assertRedirect('/report/SS-2025-016');
-        $invalidResponse->assertSessionHasErrors(['nitrogen', 'phosphorus', 'potassium', 'soil_type']);
+        $invalidResponse->assertSessionHasErrors(['soil_type', 'latitude', 'longitude']);
     }
 
-    public function test_mobile_api_fertilizer_endpoints_enforce_token_auth_and_return_resource(): void
+    public function test_mobile_api_fertilizer_endpoints_enforce_token_auth_and_omit_npk(): void
     {
         // 1. Missing token -> 401
         $getNoToken = $this->getJson('/api/v1/mobile/samples/SS-2025-016/fertilizer');
@@ -214,9 +187,8 @@ class FertilizerIntegrationTest extends TestCase
             ->assertJsonPath('code', 'AUTH_TOKEN_MISSING');
 
         $postNoToken = $this->postJson('/api/v1/mobile/samples/SS-2025-016/fertilizer', [
-            'nitrogen' => 45.0,
-            'phosphorus' => 50.0,
-            'potassium' => 60.0,
+            'crop' => 'Tomato',
+            'soil_type' => 'Loamy',
         ]);
         $postNoToken->assertStatus(401)
             ->assertJsonPath('code', 'AUTH_TOKEN_MISSING');
@@ -228,13 +200,10 @@ class FertilizerIntegrationTest extends TestCase
         $getBadToken->assertStatus(401)
             ->assertJsonPath('code', 'AUTH_TOKEN_INVALID');
 
-        // 3. Valid token POST -> 201 + FertilizerRecommendationResource structure
+        // 3. Valid token POST -> 201 + FertilizerRecommendationResource without npk
         $postValid = $this->withHeaders([
             'Authorization' => 'Bearer ' . $this->validToken,
         ])->postJson('/api/v1/mobile/samples/SS-2025-016/fertilizer', [
-            'n' => 44.0,
-            'p' => 55.0,
-            'k' => 70.0,
             'crop' => 'Tomato',
             'soil_type' => 'Loamy',
         ]);
@@ -254,33 +223,28 @@ class FertilizerIntegrationTest extends TestCase
                     'rain_advisory',
                     'model_version',
                     'fallback_used',
-                    'npk' => [
-                        'nitrogen',
-                        'phosphorus',
-                        'potassium',
-                        'npk_source',
-                    ],
                     'created_at',
                 ],
             ])
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.crop', 'Tomato')
-            ->assertJsonPath('data.predicted_fertilizer', 'Urea')
-            ->assertJsonPath('data.npk.nitrogen', 44)
-            ->assertJsonPath('data.npk.npk_source', 'manual');
+            ->assertJsonPath('data.predicted_fertilizer', 'Compost');
 
-        // 4. Valid token GET -> 200 + FertilizerRecommendationResource structure
+        $this->assertArrayNotHasKey('npk', $postValid->json('data'));
+
+        // 4. Valid token GET -> 200
         $getValid = $this->withHeaders([
             'X-Device-Token' => $this->validToken,
         ])->getJson('/api/v1/mobile/samples/SS-2025-016/fertilizer');
 
         $getValid->assertStatus(200)
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.predicted_fertilizer', 'Urea')
-            ->assertJsonPath('data.npk.nitrogen', 44);
+            ->assertJsonPath('data.predicted_fertilizer', 'Compost');
+
+        $this->assertArrayNotHasKey('npk', $getValid->json('data'));
     }
 
-    public function test_csv_export_includes_npk_and_fertilizer_recommendation_columns(): void
+    public function test_csv_export_omits_npk_columns_and_keeps_fertilizer_recommendation_columns(): void
     {
         $sample = SoilSample::where('sample_code', 'SS-2025-016')->firstOrFail();
         $reading = $sample->latestReading()->firstOrFail();
@@ -288,13 +252,13 @@ class FertilizerIntegrationTest extends TestCase
         FertilizerRecommendation::create([
             'reading_id' => $reading->id,
             'crop' => 'Tomato',
-            'predicted_fertilizer' => 'DAP',
+            'predicted_fertilizer' => 'NPK',
             'confidence' => 0.88,
-            'top_predictions' => [['fertilizer' => 'DAP', 'probability' => 0.88]],
-            'dose_kg_ha' => 115.5,
-            'split_schedule' => [['application_number' => 1, 'day_offset' => 0, 'stage' => 'Basal / At Planting', 'dose_kg_ha' => 115.5]],
+            'top_predictions' => [['fertilizer' => 'NPK', 'probability' => 0.88]],
+            'dose_kg_ha' => 857.14,
+            'split_schedule' => [['application_number' => 1, 'day_offset' => 0, 'stage' => 'Basal / At Planting', 'dose_kg_ha' => 142.86]],
             'rain_advisory' => ['status' => 'proceed', 'message' => 'Favorable outlook'],
-            'model_version' => 'gb-v1.0',
+            'model_version' => 'rf-4sensor-v1.0',
             'fallback_used' => false,
         ]);
 
@@ -303,19 +267,20 @@ class FertilizerIntegrationTest extends TestCase
 
         $content = $response->streamedContent();
 
-        $this->assertStringContainsString('Nitrogen (mg/kg)', $content);
-        $this->assertStringContainsString('Phosphorus (mg/kg)', $content);
-        $this->assertStringContainsString('Potassium (mg/kg)', $content);
-        $this->assertStringContainsString('NPK Source', $content);
+        $this->assertStringNotContainsString('Nitrogen (mg/kg)', $content);
+        $this->assertStringNotContainsString('Phosphorus (mg/kg)', $content);
+        $this->assertStringNotContainsString('Potassium (mg/kg)', $content);
+        $this->assertStringNotContainsString('NPK Source', $content);
+
         $this->assertStringContainsString('Recommended Fertilizer', $content);
         $this->assertStringContainsString('Fertilizer Dose (kg/ha)', $content);
         $this->assertStringContainsString('Rain Advisory', $content);
-        $this->assertStringContainsString('DAP', $content);
-        $this->assertStringContainsString('115.5', $content);
+        $this->assertStringContainsString('NPK', $content);
+        $this->assertStringContainsString('857.14', $content);
         $this->assertStringContainsString('proceed', $content);
     }
 
-    public function test_report_view_renders_fertilizer_card_split_schedule_rain_advisory_and_disclaimer_when_npk_present(): void
+    public function test_report_view_renders_fertilizer_card_recalculation_form_and_4_sensor_disclaimer_without_npk_inputs(): void
     {
         $sample = SoilSample::where('sample_code', 'SS-2025-016')->firstOrFail();
         $reading = $sample->latestReading()->firstOrFail();
@@ -323,17 +288,17 @@ class FertilizerIntegrationTest extends TestCase
         FertilizerRecommendation::create([
             'reading_id' => $reading->id,
             'crop' => 'Tomato',
-            'predicted_fertilizer' => 'Urea',
+            'predicted_fertilizer' => 'Compost',
             'confidence' => 0.89,
             'top_predictions' => [
-                ['fertilizer' => 'Urea', 'probability' => 0.89],
+                ['fertilizer' => 'Compost', 'probability' => 0.89],
                 ['fertilizer' => 'NPK', 'probability' => 0.08],
-                ['fertilizer' => 'DAP', 'probability' => 0.03],
+                ['fertilizer' => 'Zinc Sulphate', 'probability' => 0.03],
             ],
-            'dose_kg_ha' => 180.0,
+            'dose_kg_ha' => 1000.0,
             'split_schedule' => [
-                ['application_number' => 1, 'day_offset' => 0, 'stage' => 'Basal / At Planting', 'dose_kg_ha' => 90.0],
-                ['application_number' => 2, 'day_offset' => 21, 'stage' => 'Vegetative Top-dress', 'dose_kg_ha' => 90.0],
+                ['application_number' => 1, 'day_offset' => 0, 'stage' => 'Basal / At Planting', 'dose_kg_ha' => 142.86],
+                ['application_number' => 2, 'day_offset' => 21, 'stage' => 'Vegetative Top-dress', 'dose_kg_ha' => 142.86],
             ],
             'rain_advisory' => [
                 'status' => 'proceed',
@@ -343,7 +308,7 @@ class FertilizerIntegrationTest extends TestCase
                 'location_label' => 'Greenhouse 2',
                 'message' => '72-hour rainfall outlook is favorable (1.4 mm total, 20% max probability). Safe to proceed with scheduled application.',
             ],
-            'model_version' => 'gb-v1.0',
+            'model_version' => 'rf-4sensor-v1.0',
             'fallback_used' => false,
         ]);
 
@@ -352,24 +317,39 @@ class FertilizerIntegrationTest extends TestCase
         $response->assertStatus(200)
             ->assertSee('Fertilizer Recommendation')
             ->assertSee('Tomato')
-            ->assertSee('Urea')
-            ->assertSee('180.0 kg/ha')
+            ->assertSee('Compost')
+            ->assertSee('1,000.0 kg/ha')
             ->assertSee('89% confidence')
-            ->assertSee('Model: gb-v1.0')
-            ->assertSee('82.0 mg/kg')
-            ->assertSee('54.0 mg/kg')
-            ->assertSee('76.0 mg/kg')
-            ->assertSee('NPK source: demo')
+            ->assertSee('Model: rf-4sensor-v1.0')
             ->assertSee('Basal / At Planting')
             ->assertSee('Vegetative Top-dress')
             ->assertSee('Day +21')
-            ->assertSee('90.0 kg/ha')
             ->assertSee('Proceed with Application')
-            ->assertSee('Update Manual N-P-K', false)
-            ->assertSee(route('report.npk.store', ['id' => 'SS-2025-016']), false)
+            ->assertSee(route('report.fertilizer.refresh', ['id' => 'SS-2025-016']), false)
             ->assertSee('Agronomic Advisory Disclaimer')
-            ->assertSee('synthetic reference dataset')
-            ->assertSee('local agronomist');
+            ->assertSee('4-sensor telemetry')
+            ->assertSee('without laboratory N-P-K soil testing')
+            ->assertDontSee('name="nitrogen"', false)
+            ->assertDontSee('name="phosphorus"', false)
+            ->assertDontSee('name="potassium"', false)
+            ->assertDontSee('NPK source:')
+            ->assertDontSee('N-P-K macronutrient values required');
+    }
+
+    public function test_report_view_auto_generates_fallback_recommendation_for_partial_4_sensor_sample(): void
+    {
+        // Seeded SS-2025-017 has pH=6.50, temp=27.0, moisture=null, ec=null
+        $response = $this->get('/report/SS-2025-017');
+
+        $response->assertStatus(200)
+            ->assertSee('Fertilizer Recommendation')
+            ->assertSee('Rule-based fallback')
+            ->assertSee('Model: rule-fallback-v1')
+            ->assertSee('NPK')
+            ->assertSee(route('report.fertilizer.refresh', ['id' => 'SS-2025-017']), false)
+            ->assertDontSee('N-P-K macronutrient values required')
+            ->assertDontSee('Awaiting N-P-K telemetry')
+            ->assertDontSee('name="nitrogen"', false);
     }
 
     public function test_report_view_renders_delay_and_manual_check_rain_advisories_and_fallback_badge(): void
@@ -380,16 +360,16 @@ class FertilizerIntegrationTest extends TestCase
         $rec = FertilizerRecommendation::create([
             'reading_id' => $reading->id,
             'crop' => 'Tomato',
-            'predicted_fertilizer' => 'DAP',
+            'predicted_fertilizer' => 'Zinc Sulphate',
             'confidence' => 0.75,
             'top_predictions' => [
-                ['fertilizer' => 'DAP', 'probability' => 0.75],
+                ['fertilizer' => 'Zinc Sulphate', 'probability' => 0.75],
                 ['fertilizer' => 'NPK', 'probability' => 0.15],
-                ['fertilizer' => 'Urea', 'probability' => 0.10],
+                ['fertilizer' => 'Compost', 'probability' => 0.10],
             ],
-            'dose_kg_ha' => 110.0,
+            'dose_kg_ha' => 20.0,
             'split_schedule' => [
-                ['application_number' => 1, 'day_offset' => 0, 'stage' => 'Basal / At Planting', 'dose_kg_ha' => 110.0],
+                ['application_number' => 1, 'day_offset' => 0, 'stage' => 'Basal / At Planting', 'dose_kg_ha' => 20.0],
             ],
             'rain_advisory' => [
                 'status' => 'delay',
@@ -428,48 +408,31 @@ class FertilizerIntegrationTest extends TestCase
             ->assertSee('Unable to reach Open-Meteo weather service.');
     }
 
-    public function test_report_view_renders_missing_npk_prompt_and_manual_entry_form_when_npk_is_null(): void
-    {
-        // Seeded SS-2025-017 has null N-P-K values
-        $response = $this->get('/report/SS-2025-017');
-
-        $response->assertStatus(200)
-            ->assertSee('N-P-K macronutrient values required')
-            ->assertSee('Awaiting N-P-K telemetry')
-            ->assertSee(route('report.npk.store', ['id' => 'SS-2025-017']), false)
-            ->assertSee('name="nitrogen"', false)
-            ->assertSee('name="phosphorus"', false)
-            ->assertSee('name="potassium"', false)
-            ->assertSee('name="soil_type"', false)
-            ->assertSee('name="crop"', false)
-            ->assertSee('Agronomic Advisory Disclaimer');
-    }
-
-    public function test_analysis_view_includes_optional_npk_and_soil_type_inputs(): void
+    public function test_analysis_view_keeps_soil_type_and_omits_npk_inputs(): void
     {
         $response = $this->get('/analysis');
 
         $response->assertStatus(200)
-            ->assertSee('Optional Macronutrients (N-P-K)')
-            ->assertSee('name="nitrogen"', false)
-            ->assertSee('name="phosphorus"', false)
-            ->assertSee('name="potassium"', false)
+            ->assertSee('Optional Soil Type')
             ->assertSee('name="soil_type"', false)
             ->assertSee('Loamy')
             ->assertSee('Sandy')
             ->assertSee('Silt')
-            ->assertSee('Clay');
+            ->assertSee('Clay')
+            ->assertDontSee('name="nitrogen"', false)
+            ->assertDontSee('name="phosphorus"', false)
+            ->assertDontSee('name="potassium"', false)
+            ->assertDontSee('Optional Macronutrients (N-P-K)');
     }
 
-    public function test_history_view_renders_npk_trend_chart_and_npk_summary_column(): void
+    public function test_history_view_renders_4_sensor_trend_chart_and_omits_npk_column(): void
     {
         $response = $this->get('/history');
 
         $response->assertStatus(200)
-            ->assertSee('Soil N-P-K Trend Lines (mg/kg)')
-            ->assertSee('id="npkTrendChart"', false)
-            ->assertSee('N-P-K (mg/kg)')
-            ->assertSee('N 45 · P 32 · K 58')
-            ->assertSee('Not recorded');
+            ->assertSee('Soil Sensor Trend Lines')
+            ->assertSee('id="sensorTrendChart"', false)
+            ->assertDontSee('id="npkTrendChart"', false)
+            ->assertDontSee('N-P-K (mg/kg)');
     }
 }

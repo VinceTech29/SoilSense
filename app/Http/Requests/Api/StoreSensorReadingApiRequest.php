@@ -29,9 +29,6 @@ class StoreSensorReadingApiRequest extends FormRequest
             'moisture_percent' => ['nullable', 'numeric', 'between:0.0,100.0'],
             'temperature_c' => ['nullable', 'numeric', 'between:-10.0,60.0'],
             'ec_ms_cm' => ['nullable', 'numeric', 'between:0.0,30.0'],
-            'n' => ['nullable', 'numeric', 'between:0.0,500.0'],
-            'p' => ['nullable', 'numeric', 'between:0.0,500.0'],
-            'k' => ['nullable', 'numeric', 'between:0.0,500.0'],
             'recorded_at' => ['nullable', 'date'],
         ];
     }
@@ -52,12 +49,6 @@ class StoreSensorReadingApiRequest extends FormRequest
             'temperature_c.between' => 'The temperature reading must be between -10.0°C and 60.0°C.',
             'ec_ms_cm.numeric' => 'The electrical conductivity (EC) reading must be a valid numeric value.',
             'ec_ms_cm.between' => 'The electrical conductivity (EC) reading must be between 0.0 and 30.0 mS/cm.',
-            'n.numeric' => 'The nitrogen (n) reading must be a valid numeric value.',
-            'n.between' => 'The nitrogen (n) reading must be between 0.0 and 500.0 mg/kg.',
-            'p.numeric' => 'The phosphorus (p) reading must be a valid numeric value.',
-            'p.between' => 'The phosphorus (p) reading must be between 0.0 and 500.0 mg/kg.',
-            'k.numeric' => 'The potassium (k) reading must be a valid numeric value.',
-            'k.between' => 'The potassium (k) reading must be between 0.0 and 500.0 mg/kg.',
             'recorded_at.date' => 'The recorded_at parameter must be a valid ISO 8601 date timestamp.',
         ];
     }

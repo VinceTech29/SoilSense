@@ -22,12 +22,12 @@ class FertilizerPredictionService
     ];
 
     private const FALLBACK_CANDIDATES = [
+        'NPK',
+        'Compost',
+        'Zinc Sulphate',
         'Urea',
         'DAP',
         'MOP',
-        'Compost',
-        'Zinc Sulphate',
-        'NPK',
     ];
 
     public function __construct(
@@ -37,10 +37,11 @@ class FertilizerPredictionService
     }
 
     /**
-     * Predict recommended fertilizer class using the FastAPI ML service,
-     * falling back deterministically to agronomic rules on transport/auth/confidence issues.
+     * Predict recommended fertilizer class using SoilSense's 4 sensors (pH, EC, moisture, temperature)
+     * plus crop and soil type via the FastAPI ML service, falling back deterministically to
+     * 4-sensor agronomic rules on incomplete/uncalibrated telemetry or transport/auth/confidence issues.
      *
-     * @throws InvalidArgumentException When required NPK/sensor fields are missing, out of physical bounds, or moisture is uncalibrated.
+     * @throws InvalidArgumentException When crop is empty or sensor values are outside physical bounds.
      */
     public function predict(
         SensorReading $reading,
@@ -53,12 +54,36 @@ class FertilizerPredictionService
             throw new InvalidArgumentException('Target crop name is required for fertilizer prediction.');
         }
 
-        $this->validateReadingForPrediction($reading);
+        $this->validatePhysicalBounds($reading);
 
         [$mappedCrop, $cropMappedFrom] = $this->mapCropForModel($cleanedCrop);
         $resolvedSoilType = $this->normalizeSoilType(
             $soilType ?? $sample?->soil_type ?? $reading->soilSample?->soil_type
         );
+
+        // Missing 4-sensor telemetry -> deterministic 4-sensor rule fallback (no HTTP call)
+        if ($reading->ph === null || $reading->ec === null || $reading->moisture === null || $reading->temperature === null) {
+            return $this->buildFallbackPrediction(
+                $reading,
+                $cropMappedFrom,
+                'Incomplete 4-sensor telemetry (pH, EC, calibrated moisture, and temperature are required for ML inference); using deterministic 4-sensor rule fallback.'
+            );
+        }
+
+        // Uncalibrated moisture -> deterministic 4-sensor rule fallback (no HTTP call)
+        if (!$this->cropSuitabilityService->isMoistureCalibrated($reading)) {
+            $unit = $reading->moisture_unit ?: 'unspecified';
+            return $this->buildFallbackPrediction(
+                $reading,
+                $cropMappedFrom,
+                "Uncalibrated soil moisture ({$unit}) cannot be sent for ML fertilizer prediction; using deterministic 4-sensor rule fallback."
+            );
+        }
+
+        $moisture = (float) $reading->moisture;
+        if ($moisture < 0.0 || $moisture > 100.0) {
+            throw new InvalidArgumentException('Calibrated soil moisture must be within physical bounds (0–100%).');
+        }
 
         $mlConfig = config('fertilizer.ml_service', []);
         $apiKey = trim((string) ($mlConfig['api_key'] ?? ''));
@@ -77,12 +102,9 @@ class FertilizerPredictionService
         $threshold = (float) ($mlConfig['low_confidence_threshold'] ?? 0.55);
 
         $payload = [
-            'n' => (float) $reading->nitrogen,
-            'p' => (float) $reading->phosphorus,
-            'k' => (float) $reading->potassium,
             'ph' => (float) $reading->ph,
             'ec' => (float) $reading->ec,
-            'moisture' => (float) $reading->moisture,
+            'moisture' => $moisture,
             'temperature' => (float) $reading->temperature,
             'crop' => $mappedCrop,
             'soil_type' => $resolvedSoilType,
@@ -179,55 +201,36 @@ class FertilizerPredictionService
     }
 
     /**
-     * Validate that all required NPK and calibrated sensor channels exist and are physically plausible.
+     * Validate physical bounds for any present 4-sensor measurements.
      */
-    protected function validateReadingForPrediction(SensorReading $reading): void
+    protected function validatePhysicalBounds(SensorReading $reading): void
     {
-        if ($reading->nitrogen === null || $reading->phosphorus === null || $reading->potassium === null) {
-            throw new InvalidArgumentException(
-                'Soil N-P-K values (nitrogen, phosphorus, potassium) are required before fertilizer prediction.'
-            );
+        if ($reading->ph !== null) {
+            $ph = (float) $reading->ph;
+            if ($ph < 0.0 || $ph > 14.0) {
+                throw new InvalidArgumentException('Soil pH must be within physical bounds (0–14).');
+            }
         }
 
-        if ($reading->ph === null || $reading->ec === null || $reading->moisture === null || $reading->temperature === null) {
-            throw new InvalidArgumentException(
-                'All soil sensor parameters (pH, EC, calibrated moisture, temperature) are required before fertilizer prediction.'
-            );
+        if ($reading->ec !== null) {
+            $ec = (float) $reading->ec;
+            if ($ec < 0.0 || $ec > 30.0) {
+                throw new InvalidArgumentException('Electrical conductivity must be within physical bounds (0–30 mS/cm).');
+            }
         }
 
-        if (!$this->cropSuitabilityService->isMoistureCalibrated($reading)) {
-            $unit = $reading->moisture_unit ?: 'unspecified';
-            throw new InvalidArgumentException(
-                "Uncalibrated soil moisture ({$unit}) cannot be sent for ML fertilizer prediction."
-            );
+        if ($reading->moisture !== null) {
+            $moisture = (float) $reading->moisture;
+            if ($moisture < 0.0) {
+                throw new InvalidArgumentException('Soil moisture cannot be negative.');
+            }
         }
 
-        $n = (float) $reading->nitrogen;
-        $p = (float) $reading->phosphorus;
-        $k = (float) $reading->potassium;
-        $ph = (float) $reading->ph;
-        $ec = (float) $reading->ec;
-        $moisture = (float) $reading->moisture;
-        $temperature = (float) $reading->temperature;
-
-        if ($n < 0.0 || $p < 0.0 || $k < 0.0) {
-            throw new InvalidArgumentException('Soil N-P-K values cannot be negative.');
-        }
-
-        if ($ph < 0.0 || $ph > 14.0) {
-            throw new InvalidArgumentException('Soil pH must be within physical bounds (0–14).');
-        }
-
-        if ($ec < 0.0 || $ec > 30.0) {
-            throw new InvalidArgumentException('Electrical conductivity must be within physical bounds (0–30 mS/cm).');
-        }
-
-        if ($moisture < 0.0 || $moisture > 100.0) {
-            throw new InvalidArgumentException('Calibrated soil moisture must be within physical bounds (0–100%).');
-        }
-
-        if ($temperature < -10.0 || $temperature > 60.0) {
-            throw new InvalidArgumentException('Soil temperature must be within physical bounds (-10°C to 60°C).');
+        if ($reading->temperature !== null) {
+            $temperature = (float) $reading->temperature;
+            if ($temperature < -10.0 || $temperature > 60.0) {
+                throw new InvalidArgumentException('Soil temperature must be within physical bounds (-10°C to 60°C).');
+            }
         }
     }
 
@@ -273,7 +276,7 @@ class FertilizerPredictionService
     }
 
     /**
-     * Compute a deterministic agronomic rule-based fallback prediction with ranked top_predictions.
+     * Compute a deterministic 4-sensor agronomic rule-based fallback prediction with ranked top_predictions.
      */
     public function predictWithRuleFallback(SensorReading $reading, string $crop, string $reason): array
     {
@@ -288,34 +291,25 @@ class FertilizerPredictionService
         string $reason
     ): array {
         $rules = config('fertilizer.fallback_rules', []);
-        $nLow = (float) ($rules['nitrogen_low'] ?? 60.0);
-        $pLow = (float) ($rules['phosphorus_low'] ?? 40.0);
-        $kLow = (float) ($rules['potassium_low'] ?? 40.0);
         $phAcidic = (float) ($rules['ph_acidic'] ?? 5.5);
         $phAlkaline = (float) ($rules['ph_alkaline'] ?? 7.8);
+        $ecHigh = (float) ($rules['ec_high'] ?? 2.5);
 
-        $n = (float) $reading->nitrogen;
-        $p = (float) $reading->phosphorus;
-        $k = (float) $reading->potassium;
-        $ph = $reading->ph !== null ? (float) $reading->ph : 6.5;
+        $ph = $reading->ph !== null ? (float) $reading->ph : null;
+        $ec = $reading->ec !== null ? (float) $reading->ec : null;
 
         $matchedConditions = [];
-        if ($n < $nLow) {
-            $matchedConditions[] = 'Urea';
-        }
-        if ($p < $pLow) {
-            $matchedConditions[] = 'DAP';
-        }
-        if ($k < $kLow) {
-            $matchedConditions[] = 'MOP';
-        }
-        if ($ph < $phAcidic) {
+        if ($ph !== null && $ph < $phAcidic) {
             $matchedConditions[] = 'Compost';
         }
-        if ($ph > $phAlkaline) {
+        if ($ph !== null && $ph > $phAlkaline) {
             $matchedConditions[] = 'Zinc Sulphate';
         }
+        if ($ec !== null && $ec > $ecHigh) {
+            $matchedConditions[] = 'Compost';
+        }
 
+        $matchedConditions = array_values(array_unique($matchedConditions));
         $primary = $matchedConditions[0] ?? 'NPK';
         $primaryProbability = $matchedConditions !== [] ? 0.75 : 0.70;
 

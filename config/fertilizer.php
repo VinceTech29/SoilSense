@@ -32,18 +32,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Soil Nutrient Supply Conversion (mg/kg -> kg/ha)
-    |--------------------------------------------------------------------------
-    | Standard plough-layer factor: bulk_density (1.3 g/cm³) * depth (15 cm) * 0.1 = 1.95
-    */
-    'soil_conversion' => [
-        'bulk_density_g_cm3' => 1.3,
-        'sampling_depth_cm' => 15.0,
-        'mg_kg_to_kg_ha_factor' => (float) env('FERTILIZER_SOIL_SUPPLY_FACTOR', 1.95),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
     | Split Application Rules
     |--------------------------------------------------------------------------
     */
@@ -163,14 +151,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Deterministic Agronomic Fallback Rules (when ML Service is unavailable)
+    | Deterministic 4-Sensor Agronomic Fallback Rules (when ML Service is unavailable)
     |--------------------------------------------------------------------------
+    | pH < ph_acidic -> Compost
+    | pH > ph_alkaline -> Zinc Sulphate
+    | EC > ec_high -> Compost (avoid salt stress)
+    | Default -> NPK (14-14-14)
     */
     'fallback_rules' => [
-        'nitrogen_low' => 60.0,
-        'phosphorus_low' => 40.0,
-        'potassium_low' => 40.0,
         'ph_acidic' => 5.5,
         'ph_alkaline' => 7.8,
+        'ec_high' => 2.5,
     ],
 ];

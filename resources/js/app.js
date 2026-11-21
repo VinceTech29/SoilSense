@@ -3,7 +3,7 @@ import Chart from 'chart.js/auto';
 
 window.Chart = Chart;
 
-// Mobile Sidebar Drawer Navigation & N-P-K History Chart
+// Mobile Sidebar Drawer Navigation & 4-Sensor History Chart
 document.addEventListener('DOMContentLoaded', () => {
     const sidebar = document.getElementById('appSidebar');
     const overlay = document.getElementById('sidebarOverlay');
@@ -36,20 +36,22 @@ document.addEventListener('DOMContentLoaded', () => {
         overlay.addEventListener('click', closeSidebar);
     }
 
-    // Initialize Chart.js N-P-K Trend Lines on Sample History page
-    const npkCanvas = document.getElementById('npkTrendChart');
-    if (npkCanvas && npkCanvas.dataset.trend) {
+    // Initialize Chart.js 4-Sensor Trend Lines on Sample History page
+    // Left Y-axis: Soil pH & EC (mS/cm); Right Y-axis: Moisture (%) & Temperature (°C)
+    const sensorCanvas = document.getElementById('sensorTrendChart');
+    if (sensorCanvas && sensorCanvas.dataset.trend) {
         try {
-            const trend = JSON.parse(npkCanvas.dataset.trend);
+            const trend = JSON.parse(sensorCanvas.dataset.trend);
             if (Array.isArray(trend.labels) && trend.labels.length > 0 && trend.has_data) {
-                new Chart(npkCanvas, {
+                new Chart(sensorCanvas, {
                     type: 'line',
                     data: {
                         labels: trend.labels,
                         datasets: [
                             {
-                                label: 'Nitrogen (N)',
-                                data: trend.nitrogen,
+                                label: 'Soil pH',
+                                data: trend.ph,
+                                yAxisID: 'yLeft',
                                 borderColor: '#16a34a',
                                 backgroundColor: 'rgba(22, 163, 74, 0.12)',
                                 tension: 0.3,
@@ -59,8 +61,21 @@ document.addEventListener('DOMContentLoaded', () => {
                                 borderWidth: 2.5,
                             },
                             {
-                                label: 'Phosphorus (P)',
-                                data: trend.phosphorus,
+                                label: 'EC (mS/cm)',
+                                data: trend.ec,
+                                yAxisID: 'yLeft',
+                                borderColor: '#7c3aed',
+                                backgroundColor: 'rgba(124, 58, 237, 0.12)',
+                                tension: 0.3,
+                                spanGaps: true,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                borderWidth: 2.5,
+                            },
+                            {
+                                label: 'Moisture (%)',
+                                data: trend.moisture,
+                                yAxisID: 'yRight',
                                 borderColor: '#2563eb',
                                 backgroundColor: 'rgba(37, 99, 235, 0.12)',
                                 tension: 0.3,
@@ -70,8 +85,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                 borderWidth: 2.5,
                             },
                             {
-                                label: 'Potassium (K)',
-                                data: trend.potassium,
+                                label: 'Temperature (°C)',
+                                data: trend.temperature,
+                                yAxisID: 'yRight',
                                 borderColor: '#d97706',
                                 backgroundColor: 'rgba(217, 119, 6, 0.12)',
                                 tension: 0.3,
@@ -103,24 +119,48 @@ document.addEventListener('DOMContentLoaded', () => {
                                 callbacks: {
                                     label: (ctx) => {
                                         const val = ctx.parsed.y;
-                                        return val === null || Number.isNaN(val)
-                                            ? `${ctx.dataset.label}: N/A`
-                                            : `${ctx.dataset.label}: ${val} mg/kg`;
+                                        if (val === null || Number.isNaN(val)) {
+                                            return `${ctx.dataset.label}: N/A`;
+                                        }
+                                        const units = {
+                                            'Soil pH': 'pH',
+                                            'EC (mS/cm)': 'mS/cm',
+                                            'Moisture (%)': '%',
+                                            'Temperature (°C)': '°C',
+                                        };
+                                        const unit = units[ctx.dataset.label] || '';
+                                        return unit ? `${ctx.dataset.label}: ${val} ${unit}` : `${ctx.dataset.label}: ${val}`;
                                     },
                                 },
                             },
                         },
                         scales: {
-                            y: {
+                            yLeft: {
+                                type: 'linear',
+                                position: 'left',
                                 beginAtZero: true,
                                 title: {
                                     display: true,
-                                    text: 'Concentration (mg/kg)',
+                                    text: 'pH / EC (mS/cm)',
                                     color: '#64748b',
                                     font: { family: 'Inter, sans-serif', size: 11, weight: '600' },
                                 },
                                 grid: {
                                     color: '#eef2f6',
+                                },
+                            },
+                            yRight: {
+                                type: 'linear',
+                                position: 'right',
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Moisture (%) / Temperature (°C)',
+                                    color: '#64748b',
+                                    font: { family: 'Inter, sans-serif', size: 11, weight: '600' },
+                                },
+                                grid: {
+                                    drawOnChartArea: false,
                                 },
                             },
                             x: {
@@ -133,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         } catch (err) {
-            console.error('Failed to initialize N-P-K trend chart:', err);
+            console.error('Failed to initialize 4-sensor trend chart:', err);
         }
     }
 });

@@ -136,10 +136,6 @@
 
     <!-- Fertilizer Recommendation Section -->
     @php
-        $hasNpkValues = $reading
-            && $reading->nitrogen !== null
-            && $reading->phosphorus !== null
-            && $reading->potassium !== null;
         $gradeLabel = $fertilizerRecommendation
             ? config("fertilizer.grades.{$fertilizerRecommendation->predicted_fertilizer}.label")
             : null;
@@ -159,12 +155,6 @@
             : null;
         $rainStatus = $rainAdvisory['status'] ?? 'manual_check';
         $rainApiFailed = (bool) ($rainAdvisory['api_failed'] ?? false);
-        $npkSource = $reading?->npk_source ?? 'manual';
-        $npkSourceTone = match ($npkSource) {
-            'sensor' => 'green',
-            'manual' => 'blue',
-            default => 'amber',
-        };
     @endphp
 
     <section class="card fertilizer-card" id="fertilizerRecommendationSection">
@@ -172,7 +162,7 @@
             <div>
                 <span class="section-kicker">Fertilizer decision support</span>
                 <h2>Fertilizer Recommendation</h2>
-                <p>ML-classified fertilizer grade paired with deterministic agronomic dosage calculation and 72-hour rainfall screening.</p>
+                <p>4-sensor telemetry (pH, EC, moisture, temperature) paired with crop baseline dosage targets and 72-hour rainfall screening.</p>
             </div>
             @if($fertilizerRecommendation)
                 <div class="fertilizer-badges">
@@ -189,7 +179,7 @@
                 </div>
             @else
                 <div class="fertilizer-badges">
-                    <x-badge tone="gray">Awaiting N-P-K telemetry</x-badge>
+                    <x-badge tone="gray">Awaiting sensor telemetry</x-badge>
                 </div>
             @endif
         </div>
@@ -216,34 +206,11 @@
                         @elseif(count($splitSchedule) === 1)
                             Single application schedule
                         @else
-                            Soil supply meets crop target
+                            Zero crop baseline target
                         @endif
                     </small>
                 </div>
             </div>
-
-            <!-- Current N-P-K Reading Badges -->
-            @if($hasNpkValues)
-                <div class="npk-strip">
-                    <div class="npk-pills">
-                        <span class="npk-pill">
-                            <i class="dot-n"></i>
-                            Nitrogen (N): <strong>{{ number_format((float) $reading->nitrogen, 1) }} mg/kg</strong>
-                        </span>
-                        <span class="npk-pill">
-                            <i class="dot-p"></i>
-                            Phosphorus (P): <strong>{{ number_format((float) $reading->phosphorus, 1) }} mg/kg</strong>
-                        </span>
-                        <span class="npk-pill">
-                            <i class="dot-k"></i>
-                            Potassium (K): <strong>{{ number_format((float) $reading->potassium, 1) }} mg/kg</strong>
-                        </span>
-                    </div>
-                    <x-badge :tone="$npkSourceTone">
-                        NPK source: {{ $npkSource }}
-                    </x-badge>
-                </div>
-            @endif
 
             <!-- Rain Guard 72h Advisory Banner -->
             @if($rainAdvisory)
@@ -368,35 +335,30 @@
                             <p class="split-note">Single application — total rate is within the per-application cap, so splitting is not required.</p>
                         @endif
                     @else
-                        <p style="margin: 0; font-size: 12px;">No supplementary application required — estimated soil nutrient supply already meets or exceeds the target crop demand (0.0 kg/ha).</p>
+                        <p style="margin: 0; font-size: 12px;">No scheduled application required for this crop baseline rate (0.0 kg/ha).</p>
                     @endif
                 </div>
             </div>
 
-            <!-- Update Manual N-P-K Form -->
-            <details class="npk-update-details" {{ $errors->hasAny(['nitrogen', 'phosphorus', 'potassium', 'soil_type', 'crop']) ? 'open' : '' }}>
+            <!-- Compact Crop & Soil Type Recalculation Form -->
+            <details class="fert-recalc-details" {{ $errors->hasAny(['soil_type', 'crop', 'latitude', 'longitude', 'telemetry']) ? 'open' : '' }}>
                 <summary>
-                    <span>Update Manual N-P-K &amp; Recalculate Recommendation</span>
+                    <span>Adjust Crop or Soil Type &amp; Recalculate Recommendation</span>
                     <x-icon name="chevron" :size="15" />
                 </summary>
 
-                <form method="POST" action="{{ route('report.npk.store', ['id' => $sample->sample_code]) }}" id="updateManualNpkForm">
+                <form method="POST" action="{{ route('report.fertilizer.refresh', ['id' => $sample->sample_code]) }}" id="refreshFertilizerForm">
                     @csrf
-                    <div class="npk-form-grid">
+                    <div class="fert-form-grid">
                         <label>
-                            <span>Nitrogen (N, mg/kg) *</span>
-                            <input type="number" name="nitrogen" step="0.1" min="0" max="500" value="{{ old('nitrogen', $reading?->nitrogen) }}" required placeholder="0 – 500">
-                            @error('nitrogen') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                        <label>
-                            <span>Phosphorus (P, mg/kg) *</span>
-                            <input type="number" name="phosphorus" step="0.1" min="0" max="500" value="{{ old('phosphorus', $reading?->phosphorus) }}" required placeholder="0 – 500">
-                            @error('phosphorus') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                        <label>
-                            <span>Potassium (K, mg/kg) *</span>
-                            <input type="number" name="potassium" step="0.1" min="0" max="500" value="{{ old('potassium', $reading?->potassium) }}" required placeholder="0 – 500">
-                            @error('potassium') <span class="field-error">{{ $message }}</span> @enderror
+                            <span>Target crop override (optional)</span>
+                            <select name="crop">
+                                <option value="">Auto (top suitable crop)</option>
+                                @foreach(($cropOptions ?? []) as $cropOpt)
+                                    <option value="{{ $cropOpt }}" {{ old('crop', $fertilizerRecommendation->crop) === $cropOpt ? 'selected' : '' }}>{{ $cropOpt }}</option>
+                                @endforeach
+                            </select>
+                            @error('crop') <span class="field-error">{{ $message }}</span> @enderror
                         </label>
                         <label>
                             <span>Soil type (optional)</span>
@@ -408,73 +370,19 @@
                             </select>
                             @error('soil_type') <span class="field-error">{{ $message }}</span> @enderror
                         </label>
-                        <label>
-                            <span>Target crop override (optional)</span>
-                            <select name="crop">
-                                <option value="">Auto (top suitable crop)</option>
-                                @foreach(($cropOptions ?? []) as $cropOpt)
-                                    <option value="{{ $cropOpt }}" {{ old('crop', $fertilizerRecommendation->crop) === $cropOpt ? 'selected' : '' }}>{{ $cropOpt }}</option>
-                                @endforeach
-                            </select>
-                            @error('crop') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
                     </div>
-                    <div class="npk-form-actions">
-                        <small>Valid physical range: 0–500 mg/kg per macronutrient. Submitted values are tagged as <b>manual</b>.</small>
-                        <button type="submit" class="btn btn-primary">Update N-P-K &amp; Recalculate</button>
+                    <div class="fert-form-actions">
+                        <small>Uses SoilSense 4-sensor telemetry (pH, EC, moisture, temperature) and Open-Meteo 72h rainfall data.</small>
+                        <button type="submit" class="btn btn-primary">Recalculate Recommendation</button>
                     </div>
                 </form>
             </details>
         @else
-            <!-- Empty / Missing-NPK State + Inline Manual N-P-K Form -->
-            <div class="npk-empty-state">
-                <h3>N-P-K macronutrient values required</h3>
-                <p>This soil sample does not have Nitrogen (N), Phosphorus (P), and Potassium (K) readings yet. Enter lab or field kit N-P-K values (mg/kg) below to generate a fertilizer type prediction and deterministic kg/ha dosage plan.</p>
-
-                <form method="POST" action="{{ route('report.npk.store', ['id' => $sample->sample_code]) }}" id="manualNpkEntryForm">
-                    @csrf
-                    <div class="npk-form-grid">
-                        <label>
-                            <span>Nitrogen (N, mg/kg) *</span>
-                            <input type="number" name="nitrogen" step="0.1" min="0" max="500" value="{{ old('nitrogen', $reading?->nitrogen) }}" required placeholder="e.g. 45">
-                            @error('nitrogen') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                        <label>
-                            <span>Phosphorus (P, mg/kg) *</span>
-                            <input type="number" name="phosphorus" step="0.1" min="0" max="500" value="{{ old('phosphorus', $reading?->phosphorus) }}" required placeholder="e.g. 32">
-                            @error('phosphorus') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                        <label>
-                            <span>Potassium (K, mg/kg) *</span>
-                            <input type="number" name="potassium" step="0.1" min="0" max="500" value="{{ old('potassium', $reading?->potassium) }}" required placeholder="e.g. 58">
-                            @error('potassium') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                        <label>
-                            <span>Soil type (optional)</span>
-                            <select name="soil_type">
-                                <option value="">Default ({{ $sample->soil_type ?? 'Loamy' }})</option>
-                                @foreach(['Loamy', 'Sandy', 'Silt', 'Clay'] as $soilOpt)
-                                    <option value="{{ $soilOpt }}" {{ old('soil_type', $sample->soil_type) === $soilOpt ? 'selected' : '' }}>{{ $soilOpt }}</option>
-                                @endforeach
-                            </select>
-                            @error('soil_type') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                        <label>
-                            <span>Target crop override (optional)</span>
-                            <select name="crop">
-                                <option value="">Auto (top suitable crop)</option>
-                                @foreach(($cropOptions ?? []) as $cropOpt)
-                                    <option value="{{ $cropOpt }}" {{ old('crop') === $cropOpt ? 'selected' : '' }}>{{ $cropOpt }}</option>
-                                @endforeach
-                            </select>
-                            @error('crop') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                    </div>
-                    <div class="npk-form-actions">
-                        <small>Valid physical range: 0–500 mg/kg per macronutrient. Submitted values are tagged as <b>manual</b>.</small>
-                        <button type="submit" class="btn btn-primary">Save N-P-K &amp; Generate Recommendation</button>
-                    </div>
-                </form>
+            <!-- Empty State when no 4-sensor telemetry exists yet -->
+            <div class="fert-empty-state">
+                <h3>Sensor telemetry required</h3>
+                <p>No soil sensor readings (pH, EC, moisture, or temperature) are attached to this sample yet. Record 4-sensor telemetry to generate a fertilizer recommendation and 72-hour Rain Guard advisory.</p>
+                @error('telemetry') <p class="field-error">{{ $message }}</p> @enderror
             </div>
         @endif
 
@@ -482,7 +390,7 @@
         <div class="agronomic-disclaimer" role="note">
             <x-icon name="warning" :size="16" />
             <span>
-                <b>Agronomic Advisory Disclaimer:</b> Fertilizer recommendations are advisory only. The ML fertilizer classifier is trained on a synthetic reference dataset, and dosage calculations use standard regional crop demand targets rather than site-specific field trials. Always verify fertilizer products, application rates, and timing with a local agronomist or certified soil laboratory before field application.
+                <b>Agronomic Advisory Disclaimer:</b> Fertilizer recommendations are advisory only. Recommendations are generated from SoilSense 4-sensor telemetry (pH, EC, moisture, temperature) and standard crop baseline targets without laboratory N-P-K soil testing, and the ML classifier is trained on a synthetic reference dataset. Always verify fertilizer products, application rates, and timing with a local agronomist or certified soil laboratory before field application.
             </span>
         </div>
     </section>

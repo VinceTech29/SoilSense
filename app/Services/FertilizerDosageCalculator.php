@@ -7,65 +7,50 @@ use InvalidArgumentException;
 
 class FertilizerDosageCalculator
 {
-    private const NUTRIENT_TO_TARGET_AND_COLUMN = [
-        'n' => ['target' => 'n', 'column' => 'nitrogen'],
-        'p2o5' => ['target' => 'p', 'column' => 'phosphorus'],
-        'k2o' => ['target' => 'k', 'column' => 'potassium'],
+    private const NUTRIENT_TO_TARGET = [
+        'n' => 'n',
+        'p2o5' => 'p',
+        'k2o' => 'k',
     ];
 
     /**
-     * Calculate deterministic fertilizer application dosage (kg/ha) and split schedule
-     * strictly from config('fertilizer').
+     * Calculate deterministic crop-baseline fertilizer application dosage (kg/ha) and split schedule
+     * strictly from config('fertilizer') without soil N-P-K subtraction.
      *
-     * @throws InvalidArgumentException When grade is unsupported or required soil nutrient reading is missing.
+     * @throws InvalidArgumentException When the fertilizer grade or its fraction specification is unsupported.
      */
-    public function calculate(string $fertilizerClass, string $crop, SensorReading $reading): array
+    public function calculate(string $fertilizerClass, string $crop, ?SensorReading $reading = null): array
     {
         [$gradeKey, $grade] = $this->resolveGrade($fertilizerClass);
         $cropTargets = $this->resolveCropTargets($crop);
-        $conversionFactor = (float) config('fertilizer.soil_conversion.mg_kg_to_kg_ha_factor', 1.95);
-
-        $soilSupplyByNutrient = [
-            'n' => $reading->nitrogen !== null ? round((float) $reading->nitrogen * $conversionFactor, 2) : null,
-            'p' => $reading->phosphorus !== null ? round((float) $reading->phosphorus * $conversionFactor, 2) : null,
-            'k' => $reading->potassium !== null ? round((float) $reading->potassium * $conversionFactor, 2) : null,
-        ];
 
         $primaryNutrient = (string) ($grade['primary_nutrient'] ?? '');
         $fractions = (array) ($grade['fractions'] ?? []);
         $baseRate = $grade['base_rate_kg_ha'] ?? null;
 
         $targetKgHa = null;
-        $soilSupplyKgHa = null;
-        $deficitKgHa = null;
 
-        if (in_array($primaryNutrient, ['amendment', 'micronutrient'], true) || ($baseRate !== null && !isset(self::NUTRIENT_TO_TARGET_AND_COLUMN[$primaryNutrient]))) {
+        if (
+            in_array($primaryNutrient, ['amendment', 'micronutrient'], true)
+            || ($baseRate !== null && !isset(self::NUTRIENT_TO_TARGET[$primaryNutrient]))
+        ) {
             $rawDose = max(0.0, (float) ($baseRate ?? 0.0));
         } else {
-            if (!isset(self::NUTRIENT_TO_TARGET_AND_COLUMN[$primaryNutrient])) {
+            if (!isset(self::NUTRIENT_TO_TARGET[$primaryNutrient])) {
                 throw new InvalidArgumentException("Unsupported primary nutrient '{$primaryNutrient}' for grade '{$gradeKey}'.");
             }
 
-            $mapping = self::NUTRIENT_TO_TARGET_AND_COLUMN[$primaryNutrient];
-            $column = $mapping['column'];
-            $targetKey = $mapping['target'];
-
-            if ($reading->{$column} === null) {
-                throw new InvalidArgumentException("Sensor reading is missing '{$column}' required for '{$gradeKey}' dosage calculation.");
-            }
-
+            $targetKey = self::NUTRIENT_TO_TARGET[$primaryNutrient];
             $primaryFraction = (float) ($fractions[$primaryNutrient] ?? 0.0);
             if ($primaryFraction <= 0.0) {
                 throw new InvalidArgumentException("Invalid primary nutrient fraction for grade '{$gradeKey}'.");
             }
 
-            $targetKgHa = round((float) ($cropTargets[$targetKey] ?? 0.0), 2);
-            $soilSupplyKgHa = round((float) $reading->{$column} * $conversionFactor, 2);
-            $deficitKgHa = round(max(0.0, $targetKgHa - $soilSupplyKgHa), 2);
-            $rawDose = max(0.0, $deficitKgHa / $primaryFraction);
+            $targetKgHa = round(max(0.0, (float) ($cropTargets[$targetKey] ?? 0.0)), 2);
+            $rawDose = $targetKgHa <= 0.0 ? 0.0 : max(0.0, $targetKgHa / $primaryFraction);
         }
 
-        $doseKgHa = round($rawDose, 2);
+        $doseKgHa = round(max(0.0, $rawDose), 2);
         $maxSingleApp = (float) config('fertilizer.max_single_application_kg_ha', 150.0);
         $splitIntervals = array_values((array) config('fertilizer.split_intervals_days', [0, 21, 42]));
 
@@ -82,15 +67,12 @@ class FertilizerDosageCalculator
             'dose_kg_ha' => $doseKgHa,
             'split_schedule' => $splitSchedule,
             'nutrient_breakdown' => [
+                'basis' => 'crop_baseline_without_soil_npk',
                 'grade' => $gradeKey,
                 'grade_label' => (string) ($grade['label'] ?? $gradeKey),
                 'primary_nutrient' => $primaryNutrient,
                 'target_kg_ha' => $targetKgHa,
-                'soil_supply_kg_ha' => $soilSupplyKgHa,
-                'deficit_kg_ha' => $deficitKgHa,
-                'conversion_factor' => $conversionFactor,
                 'delivered_kg_ha' => $delivered,
-                'soil_supply_by_nutrient_kg_ha' => $soilSupplyByNutrient,
                 'crop_targets_kg_ha' => $cropTargets,
             ],
             'capped' => $capped,

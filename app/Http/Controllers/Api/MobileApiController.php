@@ -202,10 +202,6 @@ class MobileApiController extends Controller
                 'temperature' => $reading->temperature !== null ? (float) $reading->temperature : null,
                 'ec' => $reading->ec !== null ? (float) $reading->ec : null,
                 'ec_unit' => $reading->ec_unit,
-                'nitrogen' => $reading->nitrogen !== null ? (float) $reading->nitrogen : null,
-                'phosphorus' => $reading->phosphorus !== null ? (float) $reading->phosphorus : null,
-                'potassium' => $reading->potassium !== null ? (float) $reading->potassium : null,
-                'npk_source' => $reading->npk_source,
                 'is_demo' => $isDemo,
                 'data_source' => $reading->data_source,
                 'recorded_at' => $reading->recorded_at->toIso8601String(),
@@ -235,10 +231,6 @@ class MobileApiController extends Controller
                     'moisture' => $r->moisture !== null ? (float) $r->moisture : null,
                     'temperature' => $r->temperature !== null ? (float) $r->temperature : null,
                     'ec' => $r->ec !== null ? (float) $r->ec : null,
-                    'nitrogen' => $r->nitrogen !== null ? (float) $r->nitrogen : null,
-                    'phosphorus' => $r->phosphorus !== null ? (float) $r->phosphorus : null,
-                    'potassium' => $r->potassium !== null ? (float) $r->potassium : null,
-                    'npk_source' => $r->npk_source,
                 ];
             });
 
@@ -372,12 +364,6 @@ class MobileApiController extends Controller
                 'sample_code' => 'SS-' . date('Y') . '-' . str_pad($sample->id, 3, '0', STR_PAD_LEFT),
             ]);
 
-            $n = $validated['nitrogen'] ?? null;
-            $p = $validated['phosphorus'] ?? null;
-            $k = $validated['potassium'] ?? null;
-            $hasNpk = $n !== null || $p !== null || $k !== null;
-            $npkSource = $hasNpk ? ($sourceType === 'demo' ? 'demo' : 'manual') : null;
-
             // If reading data was provided, record sensor reading
             $reading = null;
             if (
@@ -385,7 +371,6 @@ class MobileApiController extends Controller
                 || isset($validated['moisture'])
                 || isset($validated['temperature'])
                 || isset($validated['ec'])
-                || $hasNpk
             ) {
                 $reading = SensorReading::create([
                     'soil_sample_id' => $sample->id,
@@ -397,10 +382,6 @@ class MobileApiController extends Controller
                     'temperature' => $validated['temperature'] ?? null,
                     'ec' => $validated['ec'] ?? null,
                     'ec_unit' => $validated['ec_unit'] ?? 'mS/cm',
-                    'nitrogen' => $n,
-                    'phosphorus' => $p,
-                    'potassium' => $k,
-                    'npk_source' => $npkSource,
                     'is_valid' => true,
                     'data_source' => $sourceType,
                 ]);
@@ -409,7 +390,7 @@ class MobileApiController extends Controller
             // Run automated agronomic assessment
             $assessment = $this->soilAssessmentService->evaluateSample($sample, $reading);
 
-            if ($reading && $n !== null && $p !== null && $k !== null) {
+            if ($reading) {
                 try {
                     $this->fertilizerRecommendationService->recommend($sample, $reading, $assessment);
                 } catch (\Throwable $e) {
@@ -520,13 +501,14 @@ class MobileApiController extends Controller
         $assessment = $sample->latestAssessment;
         $fertilizerRecommendation = $reading?->latestFertilizerRecommendation;
 
-        if (
-            $reading
-            && $reading->nitrogen !== null
-            && $reading->phosphorus !== null
-            && $reading->potassium !== null
-            && !$fertilizerRecommendation
-        ) {
+        $hasUsableTelemetry = $reading && (
+            $reading->ph !== null
+            || $reading->moisture !== null
+            || $reading->temperature !== null
+            || $reading->ec !== null
+        );
+
+        if ($hasUsableTelemetry && !$fertilizerRecommendation) {
             try {
                 $fertilizerRecommendation = $this->fertilizerRecommendationService->recommend(
                     $sample,
@@ -637,11 +619,14 @@ class MobileApiController extends Controller
         $recommendation = $reading?->latestFertilizerRecommendation;
 
         if (!$recommendation) {
-            if (!$reading || $reading->nitrogen === null || $reading->phosphorus === null || $reading->potassium === null) {
+            if (
+                !$reading
+                || ($reading->ph === null && $reading->moisture === null && $reading->temperature === null && $reading->ec === null)
+            ) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Soil N-P-K values (nitrogen, phosphorus, potassium) are required before generating a fertilizer recommendation.',
-                    'code' => 'NPK_REQUIRED',
+                    'message' => 'At least one soil sensor measurement (pH, moisture, temperature, or EC) is required before generating a fertilizer recommendation.',
+                    'code' => 'TELEMETRY_REQUIRED',
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
 
@@ -662,7 +647,7 @@ class MobileApiController extends Controller
     }
 
     /**
-     * Submit or update manual N-P-K and generate a FertilizerRecommendation for a sample (Token-Authenticated)
+     * Compute or refresh a FertilizerRecommendation for a sample using 4-sensor telemetry + crop/soil type (Token-Authenticated)
      */
     public function storeSampleFertilizer(Request $request, string $id): JsonResponse
     {
@@ -683,23 +668,25 @@ class MobileApiController extends Controller
         }
 
         $validated = $request->validate([
-            'n' => ['nullable', 'numeric', 'between:0,500'],
-            'nitrogen' => ['nullable', 'numeric', 'between:0,500'],
-            'p' => ['nullable', 'numeric', 'between:0,500'],
-            'phosphorus' => ['nullable', 'numeric', 'between:0,500'],
-            'k' => ['nullable', 'numeric', 'between:0,500'],
-            'potassium' => ['nullable', 'numeric', 'between:0,500'],
             'crop' => ['nullable', 'string', 'max:100'],
             'soil_type' => ['nullable', 'string', 'in:Sandy,Silt,Loamy,Clay'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ]);
 
-        $n = $validated['nitrogen'] ?? $validated['n'] ?? null;
-        $p = $validated['phosphorus'] ?? $validated['p'] ?? null;
-        $k = $validated['potassium'] ?? $validated['k'] ?? null;
+        $reading = $sample->latestReading;
+        if (
+            !$reading
+            || ($reading->ph === null && $reading->moisture === null && $reading->temperature === null && $reading->ec === null)
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'At least one soil sensor measurement (pH, moisture, temperature, or EC) is required to generate a fertilizer recommendation.',
+                'code' => 'TELEMETRY_REQUIRED',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
 
-        $recommendation = DB::transaction(function () use ($sample, $validated, $n, $p, $k) {
+        $recommendation = DB::transaction(function () use ($sample, $reading, $validated) {
             $sampleUpdates = [];
             foreach (['soil_type', 'latitude', 'longitude'] as $field) {
                 if (array_key_exists($field, $validated) && $validated[$field] !== null) {
@@ -708,39 +695,6 @@ class MobileApiController extends Controller
             }
             if ($sampleUpdates !== []) {
                 $sample->update($sampleUpdates);
-            }
-
-            $reading = $sample->latestReading;
-            if ($n !== null || $p !== null || $k !== null) {
-                if ($reading) {
-                    $reading->update([
-                        'nitrogen' => $n ?? $reading->nitrogen,
-                        'phosphorus' => $p ?? $reading->phosphorus,
-                        'potassium' => $k ?? $reading->potassium,
-                        'npk_source' => 'manual',
-                    ]);
-                } else {
-                    $reading = SensorReading::create([
-                        'soil_sample_id' => $sample->id,
-                        'device_id' => $sample->device_id,
-                        'nitrogen' => $n,
-                        'phosphorus' => $p,
-                        'potassium' => $k,
-                        'npk_source' => 'manual',
-                        'is_valid' => true,
-                        'recorded_at' => Carbon::now(),
-                        'data_source' => $sample->source_type ?: 'manual',
-                    ]);
-                    $sample->setRelation('latestReading', $reading);
-                }
-            }
-
-            if (!$reading || $reading->nitrogen === null || $reading->phosphorus === null || $reading->potassium === null) {
-                abort(response()->json([
-                    'success' => false,
-                    'message' => 'Soil N-P-K values (nitrogen, phosphorus, potassium) are required to generate a fertilizer recommendation.',
-                    'code' => 'NPK_REQUIRED',
-                ], Response::HTTP_UNPROCESSABLE_ENTITY));
             }
 
             $rec = $this->fertilizerRecommendationService->recommend(

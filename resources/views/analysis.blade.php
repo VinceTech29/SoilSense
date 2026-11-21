@@ -177,30 +177,15 @@
                     </div>
                 </div>
 
-                <!-- Optional Manual N-P-K & Soil Type -->
-                <div class="npk-optional-panel">
-                    <div class="npk-optional-head">
-                        <h3>Optional Macronutrients (N-P-K) &amp; Soil Type</h3>
+                <!-- Optional Soil Type -->
+                <div class="soil-optional-panel">
+                    <div class="soil-optional-head">
+                        <h3>Optional Soil Type</h3>
                         <x-badge tone="gray" :dot="false">Optional</x-badge>
                     </div>
-                    <p>Provide lab or kit N-P-K readings (0–500 mg/kg) and soil texture to immediately generate a fertilizer recommendation and dosage plan.</p>
-                    <div class="form-grid readings">
-                        <label>
-                            <span>Nitrogen (N, mg/kg)</span>
-                            <input type="number" name="nitrogen" id="sampleNitrogen" step="0.1" min="0" max="500" value="{{ old('nitrogen') }}" placeholder="0 – 500">
-                            @error('nitrogen') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                        <label>
-                            <span>Phosphorus (P, mg/kg)</span>
-                            <input type="number" name="phosphorus" id="samplePhosphorus" step="0.1" min="0" max="500" value="{{ old('phosphorus') }}" placeholder="0 – 500">
-                            @error('phosphorus') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                        <label>
-                            <span>Potassium (K, mg/kg)</span>
-                            <input type="number" name="potassium" id="samplePotassium" step="0.1" min="0" max="500" value="{{ old('potassium') }}" placeholder="0 – 500">
-                            @error('potassium') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                        <label>
+                    <p>Specify soil texture to refine the 4-sensor fertilizer recommendation alongside pH, EC, moisture, and temperature readings.</p>
+                    <div class="form-grid">
+                        <label class="full">
                             <span>Soil type</span>
                             <select name="soil_type" id="sampleSoilType">
                                 <option value="">Select soil type (optional)</option>

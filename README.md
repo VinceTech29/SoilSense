@@ -117,22 +117,22 @@ The SoilSense mobile REST API (`/api/v1/mobile/*`) provides structured JSON endp
 | `GET` | `/api/v1/mobile/reports/{id}` | `api.v1.mobile.reports.show` | Comprehensive sample report with assessment, crop suitability, and measurements |
 | `GET` | `/api/v1/mobile/devices` | `api.v1.mobile.devices` | Registered IoT devices with latest sensor telemetry |
 | `GET` | `/api/v1/mobile/devices/{id}` | `api.v1.mobile.devices.show` | Single IoT device telemetry details and connection status |
-| `GET` | `/api/v1/mobile/samples/{id}/fertilizer` | `api.v1.mobile.samples.fertilizer.show` | Latest fertilizer recommendation, dosage schedule, and Rain Guard advisory (device token auth) |
-| `POST` | `/api/v1/mobile/samples/{id}/fertilizer` | `api.v1.mobile.samples.fertilizer.store` | Submit manual N-P-K readings and generate a fertilizer recommendation (device token auth) |
+| `GET` | `/api/v1/mobile/samples/{id}/fertilizer` | `api.v1.mobile.samples.fertilizer` | Latest fertilizer recommendation, dosage schedule, and Rain Guard advisory (device token auth) |
+| `POST` | `/api/v1/mobile/samples/{id}/fertilizer` | `api.v1.mobile.samples.fertilizer.store` | Compute or refresh a fertilizer recommendation using 4-sensor telemetry + optional crop/soil type (device token auth) |
 
 ---
 
 ## Fertilizer Recommendation Module
 
-SoilSense includes a hybrid **Fertilizer Recommendation Module** that pairs a Python/FastAPI scikit-learn classifier with deterministic agronomic dosage math and a 72-hour rainfall guard.
+SoilSense includes a hybrid **Fertilizer Recommendation Module** that uses SoilSense's **4 hardware sensors (`pH`, `EC`, `moisture`, `temperature`) + `crop` and `soil_type`** (no soil N-P-K sensors or manual N-P-K inputs required), pairing a Python/FastAPI scikit-learn classifier with deterministic crop-baseline dosage math and a 72-hour Open-Meteo rainfall guard.
 
 ### Architecture Overview
 
 ```text
 +-------------------------------------------------------------------+
-|  Telemetry & Input Sources                                        |
-|  - ESP32 IoT Node (POST /api/v1/readings with optional n, p, k)   |
-|  - Web UI Manual N-P-K Form (POST /report/{id}/npk & /analysis)   |
+|  Telemetry & Input Sources (4 Hardware Sensors Only)              |
+|  - ESP32 IoT Node (POST /api/v1/readings: pH, moisture, temp, EC) |
+|  - Web UI Analysis & Report Refresh (POST /report/{id}/fertilizer)|
 |  - Flutter Mobile App (GET/POST /api/v1/mobile/samples/{id}/...)  |
 +---------------------------------+---------------------------------+
                                   |
@@ -141,9 +141,10 @@ SoilSense includes a hybrid **Fertilizer Recommendation Module** that pairs a Py
 |  Laravel 12 Orchestration Layer                                   |
 |  - FertilizerRecommendationService                                |
 |    ├── FertilizerPredictionService ──► FastAPI ml-service (/predict)
-|    │     (X-API-KEY auth + deterministic rule fallback)           |
+|    │     (6 features: ph, ec, moisture, temperature, crop,        |
+|    │      soil_type; X-API-KEY auth + 4-sensor rule fallback)     |
 |    ├── FertilizerDosageCalculator  ──► config/fertilizer.php      |
-|    │     (deterministic kg/ha rate + split application schedule)  |
+|    │     (crop-baseline kg/ha rate + split application schedule)  |
 |    └── RainGuardService            ──► Open-Meteo 72h Forecast    |
 |          (cached by rounded lat/lon; fail-safe manual_check)      |
 +---------------------------------+---------------------------------+
@@ -152,7 +153,7 @@ SoilSense includes a hybrid **Fertilizer Recommendation Module** that pairs a Py
 +-------------------------------------------------------------------+
 |  Persistence & Outputs                                            |
 |  - MySQL / SQLite (sensor_readings, fertilizer_recommendations)   |
-|  - Blade Report Card + History N-P-K Chart.js Trends              |
+|  - Blade Report Card + History 4-Sensor Chart.js Trends           |
 |  - CSV Export (/settings/export/samples) & Mobile JSON Resource   |
 +-------------------------------------------------------------------+
 ```
@@ -164,10 +165,10 @@ SoilSense includes a hybrid **Fertilizer Recommendation Module** that pairs a Py
 | Variable | Default | Description |
 | :--- | :--- | :--- |
 | `ML_SERVICE_URL` | `http://127.0.0.1:8001` | Base URL of the FastAPI ML inference service |
-| `ML_SERVICE_API_KEY` | *(empty)* | Shared secret sent in `X-API-KEY` header; if unset, Laravel uses deterministic rule fallback |
+| `ML_SERVICE_API_KEY` | *(empty)* | Shared secret sent in `X-API-KEY` header; if unset, Laravel uses deterministic 4-sensor rule fallback |
 | `ML_SERVICE_TIMEOUT` | `5` | HTTP timeout in seconds for `/predict` requests |
 | `ML_SERVICE_RETRIES` | `1` | Retry count on transient ML service errors |
-| `ML_LOW_CONFIDENCE_THRESHOLD` | `0.55` | Predictions below this probability trigger low-confidence fallback |
+| `ML_LOW_CONFIDENCE_THRESHOLD` | `0.55` | Predictions below this probability trigger low-confidence 4-sensor rule fallback |
 | `OPEN_METEO_URL` | `https://api.open-meteo.com/v1/forecast` | Open-Meteo hourly precipitation endpoint |
 | `OPEN_METEO_TIMEOUT` | `5` | HTTP timeout in seconds for weather queries |
 | `RAIN_GUARD_CACHE_TTL` | `3600` | Cache TTL in seconds for successful forecasts (keyed by rounded lat/lon) |
@@ -175,7 +176,6 @@ SoilSense includes a hybrid **Fertilizer Recommendation Module** that pairs a Py
 | `RAIN_GUARD_PROBABILITY_THRESHOLD` | `60` | Max hourly rain probability (%) threshold that triggers `delay` |
 | `DEFAULT_FIELD_LATITUDE` | `14.1699` | Fallback field latitude (Laguna, PH) when sample coordinates are absent |
 | `DEFAULT_FIELD_LONGITUDE` | `121.2441` | Fallback field longitude (Laguna, PH) when sample coordinates are absent |
-| `FERTILIZER_SOIL_SUPPLY_FACTOR` | `1.95` | Plough-layer conversion factor (`mg/kg -> kg/ha`, 1.3 g/cm³ × 15 cm × 0.1) |
 | `FERTILIZER_MAX_SINGLE_APP_KG_HA` | `150.0` | Maximum single-application rate before splitting across growth stages |
 
 #### FastAPI ML Microservice (`ml-service/.env`)
@@ -204,7 +204,7 @@ SoilSense includes a hybrid **Fertilizer Recommendation Module** that pairs a Py
    ```bash
    python training/train.py --data data/fertilizer_recommendation.csv
    ```
-   This trains and evaluates candidate pipelines using 5-fold stratified CV on the 9 SoilSense-aligned features (`Nitrogen_Level`, `Phosphorus_Level`, `Potassium_Level`, `Soil_pH`, `Electrical_Conductivity`, `Soil_Moisture`, `Temperature`, `Crop_Type`, `Soil_Type`), and outputs `models/model.joblib`, `models/metadata.json`, and `REPORT.md`.
+   This trains and evaluates candidate pipelines using 5-fold stratified CV on the **6 SoilSense-available features** (`Soil_pH`, `Electrical_Conductivity`, `Soil_Moisture`, `Temperature`, `Crop_Type`, `Soil_Type`), and outputs `models/model.joblib`, `models/metadata.json`, and `REPORT.md`.
 
 ### Running the FastAPI ML Service
 
@@ -255,9 +255,9 @@ pytest -v tests
 
 ### Synthetic Dataset Caveats & Deterministic Dosage Separation
 
-- **Strict Separation of Responsibilities ("WHAT" vs. "HOW MUCH"):** The scikit-learn `GradientBoostingClassifier` predicts **which** fertilizer class to apply (`Urea`, `DAP`, `MOP`, `SSP`, `NPK`, `Compost`, `Zinc Sulphate`) along with class probabilities. It **never** predicts application rates. All dosage rates (`kg/ha`) and split schedules are calculated deterministically in Laravel (`App\Services\FertilizerDosageCalculator`) from documented nutrient fractions and regional crop targets in `config/fertilizer.php`.
-- **Synthetic Training Data Caveats:** As audited in `ml-service/REPORT.md`, the 10,000-row reference CSV is 100% synthetic (86.42% follows a 6-rule deterministic cascade and 13.58% is uniform random label noise). Because `Crop_Growth_Stage` is not supplied by SoilSense sensors and is excluded from the 9 production features, `NPK` precision drops to ~0.34 and `SSP` (1.82% support, all inside uniform noise) is unlearnable. Overall CV accuracy (~88.4%) reflects fidelity to the synthetic distribution, not real-world field trial accuracy.
-- **Agronomic Advisory Disclaimer:** All SoilSense fertilizer outputs are decision-support advisories only. Always validate fertilizer product selection, kg/ha dosage rates, and weather timing with a local agronomist or accredited soil testing laboratory before field application.
+- **Strict Separation of Responsibilities ("WHAT" vs. "HOW MUCH"):** The scikit-learn classifier predicts **which** fertilizer class to apply (`Urea`, `DAP`, `MOP`, `SSP`, `NPK`, `Compost`, `Zinc Sulphate`) from SoilSense's 4 hardware sensors + `crop` and `soil_type`, with deterministic 4-sensor agronomic fallback (`pH < 5.5 -> Compost`, `pH > 7.8 -> Zinc Sulphate`, `EC > 2.5 -> Compost`, else balanced `NPK`) when ML confidence is below threshold or telemetry is incomplete/uncalibrated. All dosage rates (`kg/ha`) and split schedules are calculated deterministically in Laravel (`App\Services\FertilizerDosageCalculator`) from regional crop baseline targets in `config/fertilizer.php` without soil N-P-K subtraction.
+- **Synthetic Training Data Caveats:** As audited in `ml-service/REPORT.md`, the 10,000-row reference CSV is 100% synthetic and without soil N-P-K measurements (which are not collected by SoilSense's 4-sensor hardware), ML accuracy on neutral soils is limited and primarily captures pH/salinity rules and class priors. Low-confidence predictions automatically engage the deterministic 4-sensor fallback.
+- **Agronomic Advisory Disclaimer:** All SoilSense fertilizer outputs are decision-support advisories based on 4-sensor telemetry and crop baseline targets without laboratory N-P-K soil testing. Always validate fertilizer product selection, kg/ha dosage rates, and weather timing with a local agronomist or accredited soil testing laboratory before field application.
 
 ---
 
