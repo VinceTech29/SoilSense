@@ -456,6 +456,36 @@ def aggregate_feature_importances(
     }
 
 
+def resolve_dataset_origin(
+    data_path: Path,
+    df: pd.DataFrame,
+    dataset_origin: str = "auto",
+) -> bool:
+    """Determine whether the training CSV is the synthetic 19-column dataset."""
+    if dataset_origin == "synthetic":
+        return True
+    if dataset_origin == "field":
+        return False
+    has_all_extra_columns = all(col in df.columns for col in EXCLUDED_FEATURES_10)
+    return has_all_extra_columns and data_path.name.lower() == "fertilizer_recommendation.csv"
+
+
+def build_dataset_notes(data_path: Path, is_synthetic: bool) -> dict[str, Any]:
+    """Return synthetic caveat metadata or neutral field-dataset metadata."""
+    if is_synthetic:
+        return dict(SYNTHETIC_DATASET_NOTES)
+    return {
+        "is_synthetic": False,
+        "dataset_origin": "field",
+        "source_filename": data_path.name,
+        "notes": (
+            "Trained on a custom field/laboratory soil-test CSV using the 9 SoilSense "
+            "production features. Validate predictions against regional agronomic trials "
+            "and accredited soil laboratory recommendations."
+        ),
+    }
+
+
 def run_ablation_19_vs_9(
     df: pd.DataFrame,
     best_model_name: str,
@@ -463,8 +493,28 @@ def run_ablation_19_vs_9(
     train_idx: np.ndarray,
     cv: StratifiedKFold,
 ) -> dict[str, Any]:
-    """Compare 9-feature CV against all-19-feature CV on the exact same training split."""
+    """Compare 9-feature CV against all-19-feature CV when all extra raw columns exist."""
+    extra_present = [c for c in EXCLUDED_FEATURES_10 if c in df.columns]
     all_features = [c for c in df.columns if c != TARGET_COLUMN]
+
+    if len(extra_present) < len(EXCLUDED_FEATURES_10):
+        return {
+            "estimator": best_model_name,
+            "features_19_count": len(all_features),
+            "features_9_count": len(PRODUCTION_FEATURES_9),
+            "excluded_features": extra_present,
+            "ablation_skipped": True,
+            "ablation_skipped_reason": (
+                "Input CSV does not contain all 10 extra synthetic/historical columns; "
+                "9-vs-19 feature ablation skipped."
+            ),
+            "cv_19_features": {},
+            "note": (
+                "19-feature ablation skipped because this dataset supplies only the "
+                "9 SoilSense production features (or lacks all 10 extra columns)."
+            ),
+        }
+
     numeric_19 = [c for c in all_features if pd.api.types.is_numeric_dtype(df[c])]
     categorical_19 = [c for c in all_features if c not in numeric_19]
 
@@ -478,6 +528,7 @@ def run_ablation_19_vs_9(
         "features_19_count": len(all_features),
         "features_9_count": len(PRODUCTION_FEATURES_9),
         "excluded_features": EXCLUDED_FEATURES_10,
+        "ablation_skipped": False,
         "cv_19_features": {
             "cv_accuracy_mean": res_19["cv_accuracy_mean"],
             "cv_accuracy_std": res_19["cv_accuracy_std"],
@@ -500,6 +551,7 @@ def analyze_leakage_and_imbalance(
     X_train: pd.DataFrame,
     X_test: pd.DataFrame,
     y: pd.Series,
+    is_synthetic: bool = True,
 ) -> dict[str, Any]:
     """Check train/test overlap, feature leakage, and class imbalance ratio."""
     train_tuples = set(map(tuple, X_train.to_numpy()))
@@ -511,30 +563,56 @@ def analyze_leakage_and_imbalance(
     class_distribution = {
         str(cls): {
             "count": int(cnt),
-            "share_pct": round(float(cnt) / total * 100.0, 2),
+            "share_pct": round(float(cnt) / total * 100.0, 2) if total > 0 else 0.0,
         }
         for cls, cnt in counts.items()
     }
-    imbalance_ratio = round(float(counts.max()) / float(counts.min()), 2)
+    min_count = int(counts.min()) if len(counts) > 0 else 0
+    imbalance_ratio = round(float(counts.max()) / float(min_count), 2) if min_count > 0 else 0.0
+
+    majority_cls = str(counts.index[0]) if len(counts) > 0 else "N/A"
+    minority_cls = str(counts.index[-1]) if len(counts) > 0 else "N/A"
+
+    if is_synthetic and "Urea" in class_distribution and "SSP" in class_distribution:
+        imbalance_assessment = (
+            f"Target shows {imbalance_ratio}:1 class imbalance (majority Urea "
+            f"{class_distribution['Urea']['share_pct']}% vs minority SSP "
+            f"{class_distribution['SSP']['share_pct']}%). Because all SSP rows occur "
+            "exclusively inside the uniform random fallback rows with no deterministic "
+            "feature rule, class_weight='balanced' increases false positives on majority rules "
+            "without finding true SSP signal."
+        )
+    elif len(counts) > 0:
+        imbalance_assessment = (
+            f"Target shows {imbalance_ratio}:1 class imbalance (majority {majority_cls} "
+            f"{class_distribution[majority_cls]['share_pct']}% vs minority {minority_cls} "
+            f"{class_distribution[minority_cls]['share_pct']}%)."
+        )
+    else:
+        imbalance_assessment = "Target class distribution is empty."
+
+    leakage_suffix = (
+        " Historical columns (Fertilizer_Used_Last_Season, Yield_Last_Season) are excluded."
+        if any(c in df.columns for c in ("Fertilizer_Used_Last_Season", "Yield_Last_Season"))
+        else ""
+    )
+    overlap_summary = (
+        "Zero exact feature-vector overlap between train and test splits;"
+        if overlap_count == 0
+        else f"{overlap_count} exact 9-feature vector(s) shared between train and test splits;"
+    )
 
     return {
         "train_test_exact_9feature_overlap": int(overlap_count),
         "leakage_assessment": (
-            "Zero exact feature-vector overlap between train and test splits; preprocessing "
+            f"{overlap_summary} preprocessing "
             "(median imputer, StandardScaler, OneHotEncoder) is encapsulated inside sklearn "
-            "Pipeline and fitted strictly within each CV fold and on train split only. "
-            "Historical columns (Fertilizer_Used_Last_Season, Yield_Last_Season) are excluded."
+            "Pipeline and fitted strictly within each CV fold and on train split only."
+            f"{leakage_suffix}"
         ),
         "class_distribution": class_distribution,
         "majority_to_minority_ratio": imbalance_ratio,
-        "imbalance_assessment": (
-            f"Target shows {imbalance_ratio}:1 class imbalance (majority Urea "
-            f"{class_distribution['Urea']['share_pct']}% vs minority SSP "
-            f"{class_distribution['SSP']['share_pct']}%). Because all 182 SSP rows occur "
-            "exclusively inside the 1,358 uniform random fallback rows with no deterministic "
-            "feature rule, class_weight='balanced' increases false positives on majority rules "
-            "without finding true SSP signal."
-        ),
+        "imbalance_assessment": imbalance_assessment,
     }
 
 
@@ -557,48 +635,87 @@ def format_report_md(metadata: dict[str, Any]) -> str:
         f"- **Production Features (9):** `{', '.join(metadata['features'])}`",
         f"- **Target Classes ({len(metadata['classes'])}):** `{', '.join(metadata['classes'])}`",
         "",
-        "## 1. Synthetic Dataset Caveats (Do Not Overstate Accuracy)",
-        "",
-        f"- **100% Synthetic Data:** {synth['generation_mechanism']}",
-        f"- **Theoretical Bayes Ceilings:** ~{synth['bayes_ceiling_19_features']*100:.2f}% (19 features) / ~{synth['bayes_ceiling_9_features']*100:.1f}% (9 features with NPK fallback; ~{synth['bayes_ceiling_9_features_rules_only_approx']*100:.1f}% pure rules-only).",
-        f"- **Caveat:** {synth['accuracy_caveat']}",
-        "",
-        "## 2. Data Cleaning & Leakage Audit",
-        "",
-        f"- Raw rows: **{cleaning['rows_raw']}**",
-        f"- Exact duplicates dropped: **{cleaning['exact_duplicates_dropped']}**",
-        f"- Null target rows dropped: **{cleaning['null_target_rows_dropped']}**",
-        f"- Out-of-agronomic-range rows dropped: **{cleaning['out_of_range_rows_dropped']}**",
-        f"- Cleaned rows used (80/20 stratified split -> {metadata['split']['train_rows']} train / {metadata['split']['test_rows']} test): **{cleaning['rows_cleaned']}**",
-        f"- Train/test 9-feature vector overlap: **{leakage['train_test_exact_9feature_overlap']}**",
-        f"- Leakage check: {leakage['leakage_assessment']}",
-        "",
-        "## 3. Production 9-Feature Schema & 19-Feature Ablation",
-        "",
-        f"- **Why 10 columns are excluded:** {synth['excluded_feature_rationale']}",
-        "",
-        "| Feature Set | Estimator | CV Accuracy | CV Macro-F1 | CV Weighted-F1 |",
-        "|---|---|---:|---:|---:|",
-        (
-            f"| 9 SoilSense features (Production) | `{metadata['selected_model']}` | "
-            f"{ablation['cv_9_features']['cv_accuracy_mean']:.4f} ± {ablation['cv_9_features']['cv_accuracy_std']:.4f} | "
-            f"{ablation['cv_9_features']['cv_macro_f1_mean']:.4f} | "
-            f"{ablation['cv_9_features']['cv_weighted_f1_mean']:.4f} |"
-        ),
-        (
+    ]
+
+    if synth.get("is_synthetic"):
+        lines.extend(
+            [
+                "## 1. Synthetic Dataset Caveats (Do Not Overstate Accuracy)",
+                "",
+                f"- **100% Synthetic Data:** {synth['generation_mechanism']}",
+                f"- **Theoretical Bayes Ceilings:** ~{synth['bayes_ceiling_19_features']*100:.2f}% (19 features) / ~{synth['bayes_ceiling_9_features']*100:.1f}% (9 features with NPK fallback; ~{synth['bayes_ceiling_9_features_rules_only_approx']*100:.1f}% pure rules-only).",
+                f"- **Caveat:** {synth['accuracy_caveat']}",
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "## 1. Field Dataset Provenance",
+                "",
+                f"- **Dataset Origin:** `{synth.get('dataset_origin', 'field')}` (`{synth.get('source_filename', 'custom.csv')}`)",
+                f"- **Notes:** {synth.get('notes', 'Trained on user-supplied field/laboratory data.')}",
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
+            "## 2. Data Cleaning & Leakage Audit",
+            "",
+            f"- Raw rows: **{cleaning['rows_raw']}**",
+            f"- Exact duplicates dropped: **{cleaning['exact_duplicates_dropped']}**",
+            f"- Null target rows dropped: **{cleaning['null_target_rows_dropped']}**",
+            f"- Out-of-agronomic-range rows dropped: **{cleaning['out_of_range_rows_dropped']}**",
+            f"- Cleaned rows used (80/20 stratified split -> {metadata['split']['train_rows']} train / {metadata['split']['test_rows']} test): **{cleaning['rows_cleaned']}**",
+            f"- Train/test 9-feature vector overlap: **{leakage['train_test_exact_9feature_overlap']}**",
+            f"- Leakage check: {leakage['leakage_assessment']}",
+            "",
+            "## 3. Production 9-Feature Schema & 19-Feature Ablation",
+            "",
+        ]
+    )
+
+    if synth.get("excluded_feature_rationale"):
+        lines.extend(
+            [
+                f"- **Why 10 columns are excluded:** {synth['excluded_feature_rationale']}",
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
+            "| Feature Set | Estimator | CV Accuracy | CV Macro-F1 | CV Weighted-F1 |",
+            "|---|---|---:|---:|---:|",
+            (
+                f"| 9 SoilSense features (Production) | `{metadata['selected_model']}` | "
+                f"{ablation['cv_9_features']['cv_accuracy_mean']:.4f} ± {ablation['cv_9_features']['cv_accuracy_std']:.4f} | "
+                f"{ablation['cv_9_features']['cv_macro_f1_mean']:.4f} | "
+                f"{ablation['cv_9_features']['cv_weighted_f1_mean']:.4f} |"
+            ),
+        ]
+    )
+
+    if not ablation.get("ablation_skipped") and ablation.get("cv_19_features"):
+        lines.append(
             f"| All 19 CSV features (Ablation) | `{ablation['estimator']}` | "
             f"{ablation['cv_19_features']['cv_accuracy_mean']:.4f} ± {ablation['cv_19_features']['cv_accuracy_std']:.4f} | "
             f"{ablation['cv_19_features']['cv_macro_f1_mean']:.4f} | "
             f"{ablation['cv_19_features']['cv_weighted_f1_mean']:.4f} |"
-        ),
-        "",
-        f"> {ablation['note']}",
-        "",
-        "## 4. 5-Fold Stratified Cross-Validation Model Comparison (9 Features)",
-        "",
-        "| Model | Class Weight | CV Accuracy | CV Macro-F1 | CV Weighted-F1 | Train Fold Acc | Train-CV Acc Gap | Production Eligible |",
-        "|---|---|---:|---:|---:|---:|---:|:---:|",
-    ]
+        )
+
+    lines.extend(
+        [
+            "",
+            f"> {ablation['note']}",
+            "",
+            f"## 4. {metadata['split']['cv_folds']}-Fold Stratified Cross-Validation Model Comparison (9 Features)",
+            "",
+            "| Model | Class Weight | CV Accuracy | CV Macro-F1 | CV Weighted-F1 | Train Fold Acc | Train-CV Acc Gap | Production Eligible |",
+            "|---|---|---:|---:|---:|---:|---:|:---:|",
+        ]
+    )
 
     for r in cv_rows:
         cw = r["class_weight"] if r["class_weight"] else "None"
@@ -667,7 +784,12 @@ def format_report_md(metadata: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def train_and_export(data_path: Path, output_dir: Path, random_state: int) -> dict[str, Any]:
+def train_and_export(
+    data_path: Path,
+    output_dir: Path,
+    random_state: int,
+    dataset_origin: str = "auto",
+) -> dict[str, Any]:
     """Run full training pipeline and write model.joblib, metadata.json, and REPORT.md."""
     if not data_path.exists():
         raise FileNotFoundError(f"Training dataset not found: {data_path}")
@@ -678,6 +800,9 @@ def train_and_export(data_path: Path, output_dir: Path, random_state: int) -> di
     missing_cols = [c for c in PRODUCTION_FEATURES_9 + [TARGET_COLUMN] if c not in cleaned_df.columns]
     if missing_cols:
         raise ValueError(f"Dataset missing required columns: {missing_cols}")
+
+    is_synthetic = resolve_dataset_origin(data_path, cleaned_df, dataset_origin)
+    dataset_notes = build_dataset_notes(data_path, is_synthetic)
 
     X = cleaned_df[PRODUCTION_FEATURES_9].copy()
     y = cleaned_df[TARGET_COLUMN].astype(str).copy()
@@ -693,7 +818,9 @@ def train_and_export(data_path: Path, output_dir: Path, random_state: int) -> di
     X_train, X_test = X.iloc[train_idx].copy(), X.iloc[test_idx].copy()
     y_train, y_test = y.iloc[train_idx].copy(), y.iloc[test_idx].copy()
 
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=random_state)
+    min_class_train = int(y_train.value_counts().min())
+    cv_folds = max(2, min(5, min_class_train))
+    cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=random_state)
     specs = get_candidate_specs(random_state)
 
     cv_results = [
@@ -762,7 +889,10 @@ def train_and_export(data_path: Path, output_dir: Path, random_state: int) -> di
         "cv_weighted_f1_mean": best_cv["cv_weighted_f1_mean"],
     }
 
-    leakage_imbalance = analyze_leakage_and_imbalance(cleaned_df, X_train, X_test, y)
+    leakage_imbalance = analyze_leakage_and_imbalance(
+        cleaned_df, X_train, X_test, y, is_synthetic=is_synthetic
+    )
+    excluded_present = [c for c in EXCLUDED_FEATURES_10 if c in cleaned_df.columns]
 
     metadata: dict[str, Any] = {
         "model_version": "1.0.0",
@@ -778,17 +908,17 @@ def train_and_export(data_path: Path, output_dir: Path, random_state: int) -> di
         "features": PRODUCTION_FEATURES_9,
         "numeric_features": NUMERIC_FEATURES_9,
         "categorical_features": CATEGORICAL_FEATURES_9,
-        "excluded_features": EXCLUDED_FEATURES_10,
+        "excluded_features": excluded_present,
         "classes": classes,
         "known_training_categories": {
             "Crop_Type": sorted(cleaned_df["Crop_Type"].dropna().unique().tolist()),
             "Soil_Type": sorted(cleaned_df["Soil_Type"].dropna().unique().tolist()),
         },
         "split": {
-            "strategy": "stratified_80_20_plus_5fold_stratified_cv",
+            "strategy": f"stratified_80_20_plus_{cv_folds}fold_stratified_cv",
             "train_rows": int(len(X_train)),
             "test_rows": int(len(X_test)),
-            "cv_folds": 5,
+            "cv_folds": cv_folds,
         },
         "cleaning_summary": cleaning_summary,
         "cv_comparison": cv_results,
@@ -807,7 +937,7 @@ def train_and_export(data_path: Path, output_dir: Path, random_state: int) -> di
         "feature_importances": feature_importances,
         "ablation_9_vs_19": ablation,
         "leakage_and_imbalance": leakage_imbalance,
-        "synthetic_dataset_notes": SYNTHETIC_DATASET_NOTES,
+        "synthetic_dataset_notes": dataset_notes,
     }
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -844,12 +974,23 @@ def parse_args() -> argparse.Namespace:
         default=42,
         help="Random seed for split, CV, and estimators",
     )
+    parser.add_argument(
+        "--dataset-origin",
+        choices=["auto", "synthetic", "field"],
+        default="auto",
+        help="Dataset provenance metadata mode (auto detects synthetic 19-col Kaggle CSV vs custom field CSV)",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    metadata = train_and_export(args.data, args.output_dir, args.random_state)
+    metadata = train_and_export(
+        args.data,
+        args.output_dir,
+        args.random_state,
+        dataset_origin=args.dataset_origin,
+    )
     tm = metadata["test_metrics"]
     print(
         f"Training complete: selected={metadata['selected_model']} | "

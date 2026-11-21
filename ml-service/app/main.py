@@ -13,6 +13,7 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -33,6 +34,7 @@ from app.schemas import (
 logger = logging.getLogger("soilsense.ml")
 
 SERVICE_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(SERVICE_ROOT / ".env", override=False)
 DEFAULT_MODEL_PATH = SERVICE_ROOT / "models" / "model.joblib"
 DEFAULT_METADATA_PATH = SERVICE_ROOT / "models" / "metadata.json"
 
