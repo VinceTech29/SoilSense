@@ -1,27 +1,38 @@
 @extends('layouts.app', ['title' => 'Assessment Report'])
 
 @section('content')
+    @php
+        $usableCount = (int) ($assessment?->usable_parameters_count ?? 0);
+        $totalCount = (int) ($assessment?->total_parameters_count ?? 4);
+        $completenessPct = $totalCount > 0 ? round(($usableCount / $totalCount) * 100) : 0;
+
+        $phCalibration = $reading && $reading->ph !== null ? 'pH: recorded' : 'pH: pending';
+        $moistureCalibration = $reading && $reading->moisture !== null
+            ? ($reading->moisture_unit === 'raw index' ? 'Moisture: uncalibrated (raw)' : 'Moisture: calibrated (% VWC)')
+            : 'Moisture: missing';
+    @endphp
+
     <div class="report-head">
         <div>
             <a href="{{ route('dashboard') }}" class="back-link">
-                <x-icon name="chevron" :size="14" style="transform: rotate(180deg);" />
+                <x-icon name="chevron" :size="14" class="icon-back-flip" />
                 <span>Back to overview</span>
             </a>
             <span class="section-kicker">Soil assessment report</span>
-            <h1>Sample {{ $sample->sample_code }} — {{ $sample->name }}</h1>
+            <h1>Sample {{ $sample->sample_code }}: {{ $sample->name }}</h1>
             <p>Collected {{ $sample->collected_at->format('M d, Y · g:i A') }} · {{ $sample->location ?? 'Unspecified Location' }} · {{ ucfirst($sample->source_type) }} data</p>
         </div>
         <div>
-            <button type="button" class="btn btn-secondary" onclick="alert('PDF export prepared for academic review.')">
+            <a href="{{ route('settings.export.samples') }}" class="btn btn-secondary">
                 <x-icon name="download" :size="16" />
-                <span>Export PDF</span>
-            </button>
-            <button type="button" class="btn btn-primary" onclick="window.print()">Print report</button>
+                <span>Export CSV</span>
+            </a>
+            <button type="button" class="btn btn-primary" onclick="window.print()">Print / Save PDF</button>
         </div>
     </div>
 
     @if(session('success'))
-        <div class="notice success">
+        <div class="notice success" role="status">
             <x-icon name="check" />
             <div>
                 <b>Update saved</b>
@@ -31,13 +42,15 @@
     @endif
 
     <!-- Preliminary Warning Notice -->
-    <div class="notice demo">
-        <x-icon name="warning" />
-        <div>
-            <b>Preliminary prototype report</b>
-            <span>This report uses illustrative data. It is not a laboratory certificate and should not be used as the sole basis for agricultural treatment or planting decisions.</span>
+    @if($sample->source_type === 'demo')
+        <div class="notice demo">
+            <x-icon name="warning" />
+            <div>
+                <b>Preliminary prototype report</b>
+                <span>This report uses simulated prototype data. It is not a laboratory certificate and should not be used as the sole basis for agricultural treatment or planting decisions.</span>
+            </div>
         </div>
-    </div>
+    @endif
 
     <!-- Executive Summary Card -->
     <section class="card report-summary">
@@ -46,13 +59,13 @@
                 {{ ucfirst($assessment?->status ?? 'Incomplete evidence') }}
             </x-badge>
             <h2>Executive summary</h2>
-            <p>{{ $assessment?->summary ?? 'The available pH and temperature readings can support an initial crop-range comparison. Soil moisture cannot be interpreted as a percentage because the sensor is uncalibrated, and EC is not available. No universal soil health conclusion is made.' }}</p>
+            <p>{{ $assessment?->summary ?? 'Available sensor readings are evaluated against documented crop ranges. Uncalibrated moisture and missing channels remain transparently flagged.' }}</p>
         </div>
         <div class="report-complete">
             <span>Assessment completeness</span>
-            <b>{{ $assessment?->usable_parameters_count ?? 2 }} of 4 usable</b>
+            <b>{{ $usableCount }} of {{ $totalCount }} usable</b>
             <div>
-                <i style="width: {{ (($assessment?->usable_parameters_count ?? 2) / 4) * 100 }}%;"></i>
+                <i style="width: {{ $completenessPct }}%;"></i>
             </div>
             <small>Based on defined measurement requirements</small>
         </div>
@@ -79,7 +92,7 @@
             <div>
                 <span class="section-kicker">Generated from this soil test</span>
                 <h2>Vegetables you may consider planting</h2>
-                <p>These candidates match the valid pH and temperature readings. They are not guaranteed planting outcomes because EC, calibrated moisture, nutrients, texture, and drainage are still unknown.</p>
+                <p>Candidates match available valid sensor readings. Uncalibrated moisture and unmeasured laboratory parameters remain noted below.</p>
             </div>
             <a href="{{ route('crops') }}" class="btn btn-secondary">Explore all crop matches</a>
         </div>
@@ -87,7 +100,7 @@
         <div class="result-crop-grid">
             @forelse(array_slice($crops, 0, 3) as $index => $crop)
                 <article class="card result-crop">
-                    <img src="{{ $crop['image'] }}" alt="{{ $crop['name'] }} crop">
+                    <img src="{{ $crop['image'] }}" alt="{{ $crop['name'] }} crop" loading="lazy">
                     <div class="result-crop-content">
                         <div class="result-crop-title">
                             <span class="crop-rank">0{{ $index + 1 }}</span>
@@ -108,12 +121,12 @@
                         <div class="result-caution">
                             <x-icon name="warning" :size="16" />
                             <span>
-                                <b>Evidence is incomplete</b>
-                                {{ $crop['limit'] }}. Verify these before planting.
+                                <b>Evidence note</b>
+                                {{ $crop['limit'] }}. Verify before planting.
                             </span>
                         </div>
 
-                        <a href="{{ route('crop.detail', ['name' => strtolower($crop['name'])]) }}" class="btn btn-secondary">
+                        <a href="{{ route('crop.detail', ['name' => strtolower(str_replace(' ', '-', $crop['name']))]) }}" class="btn btn-secondary">
                             <span>Why this crop may fit</span>
                             <x-icon name="chevron" :size="14" />
                         </a>
@@ -128,7 +141,7 @@
             <span class="metric-icon tone-amber"><x-icon name="flask" /></span>
             <div>
                 <b>Before deciding what to plant</b>
-                <p>{{ $assessment?->recommended_next_steps ?? 'Calibrate the moisture sensor and test EC, nutrients, texture, organic matter, and drainage. Confirm the crop variety and local planting calendar with your municipal agriculturist.' }}</p>
+                <p>{{ $assessment?->recommended_next_steps ?? 'Confirm moisture sensor calibration and consult your municipal agriculturist for local variety suitability.' }}</p>
             </div>
             <a href="{{ route('analysis') }}" class="btn btn-primary">Run another soil test</a>
         </div>
@@ -220,7 +233,7 @@
                         <div class="rain-banner-body">
                             <div class="rain-banner-top">
                                 <x-badge tone="green">Proceed</x-badge>
-                                <b>Rain Guard 72h Advisory — Proceed with Application</b>
+                                <b>Rain Guard 72h Advisory: Proceed with Application</b>
                             </div>
                             <p>{{ $rainAdvisory['message'] ?? '72-hour rainfall outlook is favorable for fertilizer application.' }}</p>
                             <div class="rain-meta">
@@ -242,7 +255,7 @@
                         <div class="rain-banner-body">
                             <div class="rain-banner-top">
                                 <x-badge tone="red">Delay Application</x-badge>
-                                <b>Rain Guard 72h Advisory — Delay Application</b>
+                                <b>Rain Guard 72h Advisory: Delay Application</b>
                             </div>
                             <p>{{ $rainAdvisory['message'] ?? 'Heavy rain risk detected over the next 72 hours. Delay fertilizer application to prevent runoff.' }}</p>
                             <div class="rain-meta">
@@ -267,7 +280,7 @@
                         <div class="rain-banner-body">
                             <div class="rain-banner-top">
                                 <x-badge tone="amber">Check Weather Manually</x-badge>
-                                <b>Rain Guard 72h Advisory — Check Weather Manually</b>
+                                <b>Rain Guard 72h Advisory: Check Weather Manually</b>
                             </div>
                             <p>{{ $rainAdvisory['message'] ?? 'Live 72-hour rainfall forecast is unavailable. Check local weather conditions manually before field application.' }}</p>
                             @if(!empty($rainAdvisory['location_label']))
@@ -332,7 +345,7 @@
                             </table>
                         </div>
                         @if(count($splitSchedule) === 1)
-                            <p class="split-note">Single application — total rate is within the per-application cap, so splitting is not required.</p>
+                            <p class="split-note">Single application: total rate is within the per-application cap, so splitting is not required.</p>
                         @endif
                     @else
                         <p style="margin: 0; font-size: 12px;">No scheduled application required for this crop baseline rate (0.0 kg/ha).</p>
@@ -373,7 +386,7 @@
                     </div>
                     <div class="fert-form-actions">
                         <small>Uses SoilSense 4-sensor telemetry (pH, EC, moisture, temperature) and Open-Meteo 72h rainfall data.</small>
-                        <button type="submit" class="btn btn-primary">Recalculate Recommendation</button>
+                        <button type="submit" class="btn btn-primary" id="recalculateFertilizerBtn">Recalculate Recommendation</button>
                     </div>
                 </form>
             </details>
@@ -383,6 +396,7 @@
                 <h3>Sensor telemetry required</h3>
                 <p>No soil sensor readings (pH, EC, moisture, or temperature) are attached to this sample yet. Record 4-sensor telemetry to generate a fertilizer recommendation and 72-hour Rain Guard advisory.</p>
                 @error('telemetry') <p class="field-error">{{ $message }}</p> @enderror
+                <a href="{{ route('analysis') }}" class="btn btn-secondary">Record soil telemetry</a>
             </div>
         @endif
 
@@ -410,7 +424,7 @@
                 <span class="metric-icon tone-amber"><x-icon name="droplet" /></span>
                 <div>
                     <b>Soil moisture ({{ $reading && $reading->moisture !== null ? "{$reading->moisture} {$reading->moisture_unit}" : 'Missing' }})</b>
-                    <p>The raw value indicates sensor response only. Calibration against known water content is required before percentage interpretation.</p>
+                    <p>{{ $reading && $reading->moisture_unit === 'raw index' ? 'Raw value indicates sensor response only. Calibration against known water content is required before percentage interpretation.' : 'Calibrated volumetric water content reading.' }}</p>
                 </div>
             </div>
             <div class="interpret-row">
@@ -433,14 +447,14 @@
             <h2>Missing information</h2>
             @if($assessment && !empty($assessment->missing_information))
                 @foreach($assessment->missing_information as $item)
-                    <p class="missing-row"><span>—</span> {{ $item }}</p>
+                    <p class="missing-row"><span aria-hidden="true">-</span> {{ $item }}</p>
                 @endforeach
             @else
-                <p class="missing-row"><span>—</span> Macronutrient and micronutrient analysis</p>
-                <p class="missing-row"><span>—</span> Soil texture and drainage class</p>
-                <p class="missing-row"><span>—</span> Organic matter content</p>
-                <p class="missing-row"><span>—</span> Calibrated volumetric moisture</p>
-                <p class="missing-row"><span>—</span> Field climate and crop variety</p>
+                <p class="missing-row"><span aria-hidden="true">-</span> Laboratory nutrient analysis</p>
+                <p class="missing-row"><span aria-hidden="true">-</span> Soil drainage class</p>
+                <p class="missing-row"><span aria-hidden="true">-</span> Organic matter content</p>
+                <p class="missing-row"><span aria-hidden="true">-</span> Calibrated volumetric moisture</p>
+                <p class="missing-row"><span aria-hidden="true">-</span> Field climate and crop variety</p>
             @endif
 
             <div class="callout" style="margin-top: 20px;">
@@ -460,9 +474,24 @@
             <span><small>Source</small><b>{{ ucfirst($sample->source_type) }} ({{ $sample->testing_method }})</b></span>
             <span><small>Device reference</small><b>{{ $sample->device?->name ?? 'ESP32-01 (not connected)' }}</b></span>
             <span><small>Recorded</small><b>{{ $sample->collected_at->format('M d, Y · g:i A') }}</b></span>
-            <span><small>Method</small><b>{{ $sample->testing_method }}</b></span>
-            <span><small>Calibration</small><b>pH: recorded · Moisture: uncalibrated</b></span>
-            <span><small>Operator</small><b>{{ $sample->operator_name ?? 'Juan Dela Cruz' }}</b></span>
+            <span><small>Soil profile</small><b>{{ $sample->soil_type ?? 'Loamy (Default)' }}</b></span>
+            <span><small>Calibration</small><b>{{ $phCalibration }} · {{ $moistureCalibration }}</b></span>
+            <span><small>Operator</small><b>{{ $sample->operator_name ?? ($currentUser?->name ?? 'Juan Dela Cruz') }}</b></span>
         </div>
     </section>
 @endsection
+
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('refreshFertilizerForm');
+        const btn = document.getElementById('recalculateFertilizerBtn');
+        if (form && btn) {
+            form.addEventListener('submit', function () {
+                btn.disabled = true;
+                btn.textContent = 'Recalculating...';
+            });
+        }
+    });
+</script>
+@endpush

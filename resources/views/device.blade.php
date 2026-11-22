@@ -6,10 +6,10 @@
             <h1>Device Monitoring</h1>
             <p>Review connection state, sensor availability, and the latest API communication.</p>
         </div>
-        <div class="segmented" id="stateSwitcher">
-            <button type="button" class="active" data-state="online">Online</button>
-            <button type="button" data-state="offline">Offline</button>
-            <button type="button" data-state="error">Error</button>
+        <div class="segmented" id="stateSwitcher" role="group" aria-label="Preview device status state">
+            <button type="button" class="active" data-state="online" aria-pressed="true">Online</button>
+            <button type="button" data-state="offline" aria-pressed="false">Offline</button>
+            <button type="button" data-state="error" aria-pressed="false">Error</button>
         </div>
     </div>
 
@@ -51,57 +51,53 @@
             </div>
 
             <div class="sensor-row">
-                <span class="sensor-status"></span>
+                <span class="sensor-status" aria-hidden="true"></span>
                 <div>
                     <b>pH probe</b>
                     <small>Output unit: pH</small>
                 </div>
                 <x-badge tone="green">Reporting</x-badge>
                 <span><small>Calibration</small><b>Calibration recorded</b></span>
-                <x-icon name="chevron" :size="16" />
             </div>
 
             <div class="sensor-row">
-                <span class="sensor-status amber"></span>
+                <span class="sensor-status amber" aria-hidden="true"></span>
                 <div>
                     <b>Capacitive moisture</b>
-                    <small>Output unit: Raw index</small>
+                    <small>Output unit: % VWC / Raw index</small>
                 </div>
-                <x-badge tone="amber">Reporting</x-badge>
-                <span><small>Calibration</small><b>Calibration required</b></span>
-                <x-icon name="chevron" :size="16" />
+                <x-badge tone="amber">Check mode</x-badge>
+                <span><small>Calibration</small><b>Verify % VWC curve</b></span>
             </div>
 
             <div class="sensor-row">
-                <span class="sensor-status"></span>
+                <span class="sensor-status" aria-hidden="true"></span>
                 <div>
-                    <b>DS18B20</b>
+                    <b>DS18B20 temperature</b>
                     <small>Output unit: °C</small>
                 </div>
                 <x-badge tone="green">Reporting</x-badge>
-                <span><small>Calibration</small><b>Status unavailable</b></span>
-                <x-icon name="chevron" :size="16" />
+                <span><small>Calibration</small><b>Factory digital probe</b></span>
             </div>
 
             <div class="sensor-row">
-                <span class="sensor-status gray"></span>
+                <span class="sensor-status gray" aria-hidden="true"></span>
                 <div>
                     <b>EC probe</b>
                     <small>Output unit: mS/cm</small>
                 </div>
-                <x-badge tone="gray">No valid data</x-badge>
-                <span><small>Calibration</small><b>Status unavailable</b></span>
-                <x-icon name="chevron" :size="16" />
+                <x-badge tone="gray">Optional</x-badge>
+                <span><small>Calibration</small><b>Verify 1.41 mS/cm ref</b></span>
             </div>
         </section>
 
         <!-- API Endpoint Communication Panel -->
-        <aside class="card api-panel">
+        <aside class="card api-panel" id="apiStatusPanel">
             <span class="section-kicker">Latest communication</span>
             <h2>API status</h2>
-            
+
             <div class="api-status">
-                <span class="check-ok"><x-icon name="check" :size="15" /></span>
+                <span class="check-ok" aria-hidden="true"><x-icon name="check" :size="15" /></span>
                 <div>
                     <b>REST API active</b>
                     <small>POST /api/v1/readings · HTTP 201</small>
@@ -111,7 +107,7 @@
             <p><span>Auth method</span><b>Bearer / X-Device-Token</b></p>
             <p><span>Token hash</span><b>SHA-256 verified</b></p>
             <p><span>Rate limit</span><b>60 req/min</b></p>
-            <p><span>Last sync</span><b>{{ $device && $device->last_seen_at ? $device->last_seen_at->format('M d · g:i:s A') : 'Awaiting sensor' }}</b></p>
+            <p><span>Last sync</span><b id="apiPanelLastSync">{{ $device && $device->last_seen_at ? $device->last_seen_at->format('M d · g:i:s A') : 'Awaiting sensor' }}</b></p>
             <p><span>Recent records</span><b>{{ $recentReadings->count() }} telemetry packets</b></p>
             <p><span>Hardware link</span><b>ESP32 HTTP Client</b></p>
         </aside>
@@ -123,9 +119,9 @@
             <div>
                 <span class="section-kicker">Interactive Hardware Pre-Test</span>
                 <h2>ESP32 Telemetry Simulator</h2>
-                <p>Simulate real sensor signals before your physical ESP32 components arrive. Adjust probe parameters and transmit authentic JSON telemetry packets directly to the REST API.</p>
+                <p>Adjust probe parameters and transmit JSON telemetry packets directly to the authenticated REST API.</p>
             </div>
-            <x-badge tone="blue"><span class="badge-dot"></span>Firmware Ready</x-badge>
+            <x-badge tone="blue">Firmware Ready</x-badge>
         </div>
 
         <div class="sim-grid">
@@ -142,7 +138,8 @@
                     <span class="sim-value-pill" id="simPhDisplay">6.4</span>
                 </div>
                 <div class="sim-slider-wrap">
-                    <input type="range" class="sim-slider" id="simPhSlider" min="4.0" max="9.0" step="0.1" value="6.4">
+                    <label for="simPhSlider" class="sr-only">Simulated Soil pH (4.0 to 9.0)</label>
+                    <input type="range" class="sim-slider" id="simPhSlider" min="4.0" max="9.0" step="0.1" value="6.4" aria-valuetext="6.4 pH">
                     <div class="sim-range-labels">
                         <span>4.0 Acidic</span>
                         <span>7.0 Neutral</span>
@@ -164,7 +161,8 @@
                     <span class="sim-value-pill" id="simMoistureDisplay">35.0%</span>
                 </div>
                 <div class="sim-slider-wrap">
-                    <input type="range" class="sim-slider" id="simMoistureSlider" min="10" max="85" step="0.5" value="35">
+                    <label for="simMoistureSlider" class="sr-only">Simulated Soil Moisture Percentage (10% to 85%)</label>
+                    <input type="range" class="sim-slider" id="simMoistureSlider" min="10" max="85" step="0.5" value="35" aria-valuetext="35.0%">
                     <div class="sim-range-labels">
                         <span>10% Wilting</span>
                         <span>50% Field Cap.</span>
@@ -186,7 +184,8 @@
                     <span class="sim-value-pill" id="simTempDisplay">27.0°C</span>
                 </div>
                 <div class="sim-slider-wrap">
-                    <input type="range" class="sim-slider" id="simTempSlider" min="15" max="42" step="0.5" value="27">
+                    <label for="simTempSlider" class="sr-only">Simulated Soil Temperature in Celsius (15 to 42)</label>
+                    <input type="range" class="sim-slider" id="simTempSlider" min="15" max="42" step="0.5" value="27" aria-valuetext="27.0°C">
                     <div class="sim-range-labels">
                         <span>15°C Cool</span>
                         <span>27°C Optimal</span>
@@ -208,7 +207,8 @@
                     <span class="sim-value-pill" id="simEcDisplay">1.20 mS/cm</span>
                 </div>
                 <div class="sim-slider-wrap">
-                    <input type="range" class="sim-slider" id="simEcSlider" min="0.0" max="4.0" step="0.05" value="1.2">
+                    <label for="simEcSlider" class="sr-only">Simulated Salinity EC in mS/cm (0.0 to 4.0)</label>
+                    <input type="range" class="sim-slider" id="simEcSlider" min="0.0" max="4.0" step="0.05" value="1.2" aria-valuetext="1.20 mS/cm">
                     <div class="sim-range-labels">
                         <span>0.0 Low Salt</span>
                         <span>2.0 Limit</span>
@@ -243,18 +243,16 @@
         </div>
 
         <!-- Feedback Banner -->
-        <div id="simFeedbackBanner" style="display: none;"></div>
+        <div id="simFeedbackBanner" hidden></div>
 
         <!-- Raw JSON Drawer (collapsible) -->
-        <details id="simJsonDrawer" style="display: none; margin-top: 14px;">
-            <summary style="font-size: 11px; font-weight: 700; color: #64748b; cursor: pointer; user-select: none;">
-                View Ingested Payload & Assessment Response (JSON)
-            </summary>
-            <div id="simResponseBox" style="margin-top: 8px; padding: 14px; background: #0f172a; color: #38bdf8; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 11px; max-height: 200px; overflow-y: auto; white-space: pre-wrap;"></div>
+        <details id="simJsonDrawer" class="sim-json-drawer" hidden>
+            <summary>View Ingested Payload &amp; Assessment Response (JSON)</summary>
+            <div id="simResponseBox" class="sim-response-box"></div>
         </details>
     </section>
 
-    <!-- Transmission History Log -->
+    <!-- Live Transmission History Log -->
     <section class="card transmission">
         <div class="card-header">
             <div>
@@ -267,29 +265,37 @@
             </select>
         </div>
 
-        <div class="log-row" data-type="info">
-            <span class="log-dot"></span>
-            <b>10:42:18 AM</b>
-            <span>Demo packet accepted</span>
-            <small>3 readings stored</small>
-        </div>
-        <div class="log-row" data-type="warning">
-            <span class="log-dot amber"></span>
-            <b>10:40:16 AM</b>
-            <span>EC value rejected</span>
-            <small>No valid measurement</small>
-        </div>
-        <div class="log-row" data-type="info">
-            <span class="log-dot"></span>
-            <b>10:38:15 AM</b>
-            <span>Demo packet accepted</span>
-            <small>3 readings stored</small>
-        </div>
-        <div class="log-row" data-type="warning">
-            <span class="log-dot amber"></span>
-            <b>10:36:14 AM</b>
-            <span>Moisture calibration missing</span>
-            <small>Raw index retained</small>
+        <div id="transmissionLogList">
+            @forelse($recentReadings as $logReading)
+                @php
+                    $paramCount = collect([
+                        $logReading->ph,
+                        $logReading->moisture,
+                        $logReading->temperature,
+                        $logReading->ec,
+                    ])->filter(fn ($v) => $v !== null)->count();
+                    $hasWarning = ($logReading->moisture_unit === 'raw index') || ($paramCount < 4) || !$logReading->is_valid;
+                    $eventLabel = $logReading->is_valid
+                        ? ucfirst($logReading->data_source ?? 'demo') . ' packet recorded (' . ($logReading->soilSample?->sample_code ?? 'Sample #' . $logReading->soil_sample_id) . ')'
+                        : 'Packet flagged invalid';
+                    $noteLabel = $logReading->moisture_unit === 'raw index'
+                        ? "{$paramCount} readings stored · Moisture uncalibrated"
+                        : "{$paramCount} of 4 channels stored";
+                @endphp
+                <div class="log-row" data-type="{{ $hasWarning ? 'warning' : 'info' }}">
+                    <span class="log-dot {{ $hasWarning ? 'amber' : '' }}" aria-hidden="true"></span>
+                    <b>{{ $logReading->recorded_at ? $logReading->recorded_at->format('g:i:s A') : 'N/A' }}</b>
+                    <span>{{ $eventLabel }}</span>
+                    <small>{{ $noteLabel }}</small>
+                </div>
+            @empty
+                <div class="log-row" data-type="warning">
+                    <span class="log-dot amber" aria-hidden="true"></span>
+                    <b>No packets</b>
+                    <span>No sensor transmissions recorded yet</span>
+                    <small>Use the simulator above to send a packet</small>
+                </div>
+            @endforelse
         </div>
     </section>
 @endsection
@@ -302,35 +308,41 @@
         const badge = document.getElementById('deviceHeroBadge');
         const text = document.getElementById('deviceHeroText');
         const actionBtn = document.getElementById('deviceHeroActionBtn');
+        const apiPanel = document.getElementById('apiStatusPanel');
+        const logList = document.getElementById('transmissionLogList');
 
         const states = {
             online: {
                 className: 'device-hero card state-online',
                 badgeClass: 'badge badge-green',
-                badgeHtml: '<span class="badge-dot"></span>Online · simulated',
-                text: 'Last demonstration packet received 2 minutes ago.',
+                badgeHtml: '<span class="badge-dot"></span>Online · preview',
+                text: 'Previewing healthy online connection state.',
                 btnText: 'View API details'
             },
             offline: {
                 className: 'device-hero card state-offline',
                 badgeClass: 'badge badge-gray',
-                badgeHtml: '<span class="badge-dot"></span>Offline',
+                badgeHtml: '<span class="badge-dot"></span>Offline · preview',
                 text: 'No recent communication. Last state is not assumed current.',
-                btnText: 'Troubleshoot connection'
+                btnText: 'Check API status'
             },
             error: {
                 className: 'device-hero card state-error',
                 badgeClass: 'badge badge-red',
-                badgeHtml: '<span class="badge-dot"></span>Sensor error',
+                badgeHtml: '<span class="badge-dot"></span>Sensor error · preview',
                 text: 'Moisture sensor returned an invalid raw value.',
-                btnText: 'Troubleshoot connection'
+                btnText: 'Inspect API panel'
             }
         };
 
         switcher.querySelectorAll('button').forEach(btn => {
             btn.addEventListener('click', function () {
-                switcher.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                switcher.querySelectorAll('button').forEach(b => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-pressed', 'false');
+                });
                 this.classList.add('active');
+                this.setAttribute('aria-pressed', 'true');
 
                 const state = this.getAttribute('data-state');
                 const conf = states[state];
@@ -343,21 +355,22 @@
             });
         });
 
-        const logFilter = document.getElementById('transmissionLogFilter');
-        const logRows = document.querySelectorAll('.log-row');
-
-        logFilter.addEventListener('change', function () {
-            const val = this.value;
-            logRows.forEach(row => {
-                if (val === 'warnings') {
-                    row.style.display = row.getAttribute('data-type') === 'warning' ? 'grid' : 'none';
-                } else {
-                    row.style.display = 'grid';
-                }
-            });
+        actionBtn.addEventListener('click', function () {
+            if (!apiPanel) return;
+            apiPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            apiPanel.classList.add('highlight-ring');
+            window.setTimeout(() => apiPanel.classList.remove('highlight-ring'), 1600);
         });
 
-        // Simulator Sliders & Telemetry Dispatch
+        const logFilter = document.getElementById('transmissionLogFilter');
+        function applyLogFilter() {
+            const val = logFilter.value;
+            logList.querySelectorAll('.log-row').forEach(row => {
+                row.style.display = (val === 'warnings' && row.getAttribute('data-type') !== 'warning') ? 'none' : 'grid';
+            });
+        }
+        logFilter.addEventListener('change', applyLogFilter);
+
         const phSlider = document.getElementById('simPhSlider');
         const phDisplay = document.getElementById('simPhDisplay');
         const moistureSlider = document.getElementById('simMoistureSlider');
@@ -373,10 +386,39 @@
         const sampleCodeInput = document.getElementById('simSampleCode');
 
         function updateDisplays() {
-            if (phSlider) phDisplay.textContent = parseFloat(phSlider.value).toFixed(1);
-            if (moistureSlider) moistureDisplay.textContent = parseFloat(moistureSlider.value).toFixed(1) + '%';
-            if (tempSlider) tempDisplay.textContent = parseFloat(tempSlider.value).toFixed(1) + '°C';
-            if (ecSlider) ecDisplay.textContent = parseFloat(ecSlider.value).toFixed(2) + ' mS/cm';
+            if (phSlider) {
+                const v = parseFloat(phSlider.value).toFixed(1);
+                phDisplay.textContent = v;
+                phSlider.setAttribute('aria-valuetext', `${v} pH`);
+            }
+            if (moistureSlider) {
+                const v = parseFloat(moistureSlider.value).toFixed(1) + '%';
+                moistureDisplay.textContent = v;
+                moistureSlider.setAttribute('aria-valuetext', v);
+            }
+            if (tempSlider) {
+                const v = parseFloat(tempSlider.value).toFixed(1) + '°C';
+                tempDisplay.textContent = v;
+                tempSlider.setAttribute('aria-valuetext', v);
+            }
+            if (ecSlider) {
+                const v = parseFloat(ecSlider.value).toFixed(2) + ' mS/cm';
+                ecDisplay.textContent = v;
+                ecSlider.setAttribute('aria-valuetext', v);
+            }
+        }
+
+        function prependLogEntry(isError, label, detail) {
+            if (!logList) return;
+            const nowStr = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+            const row = document.createElement('div');
+            row.className = 'log-row';
+            row.setAttribute('data-type', isError ? 'warning' : 'info');
+            row.innerHTML = `<span class="log-dot ${isError ? 'amber' : ''}" aria-hidden="true"></span><b>${nowStr}</b><span></span><small></small>`;
+            row.querySelector('span:nth-of-type(2)').textContent = label;
+            row.querySelector('small').textContent = detail;
+            logList.prepend(row);
+            applyLogFilter();
         }
 
         if (phSlider) {
@@ -385,7 +427,6 @@
             tempSlider.addEventListener('input', updateDisplays);
             ecSlider.addEventListener('input', updateDisplays);
 
-            // Handle presets
             document.querySelectorAll('.sim-preset-btn').forEach(btn => {
                 btn.addEventListener('click', function () {
                     phSlider.value = this.getAttribute('data-ph');
@@ -398,8 +439,8 @@
 
             sendBtn.addEventListener('click', async function () {
                 sendBtn.disabled = true;
-                sendBtn.innerHTML = '<span>Transmitting…</span>';
-                feedbackBanner.style.display = 'none';
+                sendBtn.innerHTML = '<span>Transmitting...</span>';
+                feedbackBanner.hidden = true;
 
                 const payload = {
                     sample_id: sampleCodeInput.value.trim() || 'SS-2025-018',
@@ -425,27 +466,29 @@
 
                     if (res.ok) {
                         feedbackBanner.className = 'sim-feedback-toast success';
-                        feedbackBanner.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Telemetry Ingested Successfully! Sample <b>${payload.sample_id}</b> assessment updated to <b>${json.data?.assessment?.status ?? 'reviewed'}</b>.</span>`;
-                        feedbackBanner.style.display = 'flex';
+                        feedbackBanner.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Telemetry Ingested! Sample <b>${payload.sample_id}</b> updated to <b>${json.data?.assessment?.status ?? 'reviewed'}</b>.</span>`;
+                        feedbackBanner.hidden = false;
+                        prependLogEntry(false, `Simulated packet accepted (${payload.sample_id})`, '4 of 4 calibrated channels stored');
                     } else {
                         feedbackBanner.className = 'sim-feedback-toast error';
-                        feedbackBanner.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Transmission Rejected: ${json.error || 'Validation error'}</span>`;
-                        feedbackBanner.style.display = 'flex';
+                        feedbackBanner.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Transmission Rejected: ${json.error || 'Validation error'}</span>`;
+                        feedbackBanner.hidden = false;
+                        prependLogEntry(true, `Packet rejected (${payload.sample_id})`, json.error || `HTTP ${res.status}`);
                     }
 
                     if (jsonDrawer) {
-                        jsonDrawer.style.display = 'block';
+                        jsonDrawer.hidden = false;
                         jsonDrawer.open = true;
                     }
-                    responseBox.innerHTML = `// HTTP ${res.status} Response\n` + JSON.stringify(json, null, 2);
+                    responseBox.textContent = `// HTTP ${res.status} Response\n` + JSON.stringify(json, null, 2);
                     responseBox.style.color = res.ok ? '#4ade80' : '#f87171';
                 } catch (err) {
                     feedbackBanner.className = 'sim-feedback-toast error';
-                    feedbackBanner.innerHTML = `<span>Network Error: ${err.message}</span>`;
-                    feedbackBanner.style.display = 'flex';
+                    feedbackBanner.textContent = `Network Error: ${err.message}`;
+                    feedbackBanner.hidden = false;
                 } finally {
                     sendBtn.disabled = false;
-                    sendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg><span>Send ESP32 Telemetry</span>';
+                    sendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg><span>Send ESP32 Telemetry</span>';
                 }
             });
         }

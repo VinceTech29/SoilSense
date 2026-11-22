@@ -88,4 +88,44 @@ class FrontendRoutesTest extends TestCase
         $response->assertSee('Settings');
         $response->assertSee('User profile');
     }
+
+    public function test_ui_revamp_interactive_and_accessibility_elements_render_cleanly(): void
+    {
+        $this->get('/')
+            ->assertStatus(200)
+            ->assertSee('id="publicNavDrawer"', false)
+            ->assertSee('16');
+
+        $this->get('/dashboard')
+            ->assertStatus(200)
+            ->assertSee('id="dashboardPhChart"', false)
+            ->assertSee('id="globalToastContainer"', false);
+
+        $this->get('/analysis')
+            ->assertStatus(200)
+            ->assertSee('Step 3 of 3')
+            ->assertSee('id="manualMoistureUnit"', false)
+            ->assertSee('role="tablist"', false);
+
+        $this->get('/crops')
+            ->assertStatus(200)
+            ->assertSee('id="cropCompareModal"', false)
+            ->assertSee('id="scoringMethodology"', false)
+            ->assertDontSee('alert(');
+
+        $this->get('/history')
+            ->assertStatus(200)
+            ->assertSee('id="sampleCompareModal"', false)
+            ->assertDontSee('alert(');
+
+        $this->get('/reports?days=30')
+            ->assertStatus(200)
+            ->assertSee('Export CSV')
+            ->assertDontSee('alert(');
+
+        $this->get('/report/SS-2025-016')
+            ->assertStatus(200)
+            ->assertSee('Print / Save PDF')
+            ->assertDontSee('alert(');
+    }
 }

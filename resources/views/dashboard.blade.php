@@ -1,6 +1,15 @@
 @extends('layouts.app', ['title' => 'Overview'])
 
 @section('content')
+    @php
+        $usableCount = (int) ($assessment?->usable_parameters_count ?? 0);
+        $totalCount = (int) ($assessment?->total_parameters_count ?? 4);
+        $ringPct = $totalCount > 0 ? round(($usableCount / $totalCount) * 100) : 0;
+        $isDemo = $latestSample ? $latestSample->source_type === 'demo' : true;
+        $phLabels = $phTrendSeries['14']['labels'] ?? [];
+        $hasPhTrend = !empty($phLabels) || !empty($phTrendSeries['30']['labels']);
+    @endphp
+
     <!-- Page Title & Header Status -->
     <div class="page-title">
         <div>
@@ -8,7 +17,7 @@
             <p>Monitor measured conditions and evaluate crop candidates with transparent evidence.</p>
         </div>
         <div class="updated">
-            <span class="status-pulse"></span>
+            <span class="status-pulse {{ $latestSample ? '' : 'offline' }}" aria-hidden="true"></span>
             <div>
                 <b>Latest sample</b>
                 <small>{{ $latestSample ? $latestSample->collected_at->format('M d, Y · g:i A') : 'No samples recorded' }}</small>
@@ -17,14 +26,16 @@
     </div>
 
     <!-- Demonstration Notice -->
-    <div class="notice demo">
-        <x-icon name="flask" />
-        <div>
-            <b>Demonstration dataset</b>
-            <span>Values shown are illustrative prototype data, not live ESP32 readings or a certified laboratory analysis.</span>
+    @if($isDemo)
+        <div class="notice demo">
+            <x-icon name="flask" />
+            <div>
+                <b>Demonstration dataset active</b>
+                <span>Values shown include simulated prototype data, not a certified laboratory soil certificate.</span>
+            </div>
+            <a href="{{ route('device') }}">Learn about data quality</a>
         </div>
-        <a href="{{ route('device') }}">Learn about data quality</a>
-    </div>
+    @endif
 
     <!-- Device Telemetry Strip -->
     <section class="device-strip card">
@@ -38,16 +49,16 @@
         <div class="device-detail">
             <span>Connection</span>
             <x-badge :tone="$device && $device->status === 'online' ? 'green' : 'gray'">
-                {{ ucfirst($device?->status ?? 'online') }} · {{ $device?->is_demo ? 'Demo' : 'Live' }}
+                {{ ucfirst($device?->status ?? 'offline') }} · {{ $device?->is_demo ? 'Demo' : 'Live' }}
             </x-badge>
         </div>
         <div class="device-detail">
             <span>Last received</span>
-            <b>{{ $device && $device->last_seen_at ? $device->last_seen_at->diffForHumans() : '2 minutes ago' }}</b>
+            <b>{{ $device && $device->last_seen_at ? $device->last_seen_at->diffForHumans() : 'Awaiting packet' }}</b>
         </div>
         <div class="device-detail">
             <span>Sensor status</span>
-            <b>{{ $assessment?->usable_parameters_count ?? 3 }} of 4 reporting</b>
+            <b>{{ $usableCount }} of {{ $totalCount }} reporting</b>
         </div>
         <a href="{{ route('device') }}" class="btn btn-secondary">View device details</a>
     </section>
@@ -65,52 +76,54 @@
         <section class="card assessment">
             <div class="card-header">
                 <div>
-                    <span class="section-kicker">Current sample · {{ $latestSample?->sample_code ?? 'SS-2025-018' }}</span>
-                    <h2>Preliminary assessment</h2>
+                    <span class="section-kicker">
+                        {{ $latestSample ? 'Current sample · ' . $latestSample->sample_code : 'No active sample' }}
+                    </span>
+                    <h2>{{ $assessment ? ucfirst($assessment->status) . ' assessment' : 'Awaiting assessment' }}</h2>
                 </div>
-                <x-badge :tone="($assessment?->status ?? 'preliminary') === 'reviewed' ? 'green' : 'amber'">
-                    {{ ucfirst($assessment?->status ?? 'Incomplete evidence') }}
+                <x-badge :tone="($assessment?->status ?? 'incomplete') === 'reviewed' ? 'green' : 'amber'">
+                    {{ ucfirst($assessment?->status ?? 'No data') }}
                 </x-badge>
             </div>
-            
-            <p>{{ $assessment?->summary ?? 'Three measurements are available. The sample’s pH aligns with several candidate crop ranges, but moisture is uncalibrated and EC is missing.' }}</p>
+
+            <p>{{ $assessment?->summary ?? 'No soil assessment is available yet. Register a sample or transmit telemetry to begin evaluation.' }}</p>
 
             <div class="completeness">
-                <div class="ring">
-                    <b>{{ $assessment?->usable_parameters_count ?? 3 }}/4</b>
+                <div class="ring" style="--pct: {{ $ringPct }};">
+                    <b>{{ $usableCount }}/{{ $totalCount }}</b>
                     <span>parameters</span>
                 </div>
                 <div class="check-list">
                     <p>
                         @if($reading && $reading->ph !== null)
-                            <span class="check-ok"><x-icon name="check" :size="14" /></span> pH reading available ({{ $reading->ph }})
+                            <span class="check-ok" aria-hidden="true"><x-icon name="check" :size="14" /></span> pH reading available ({{ number_format($reading->ph, 1) }})
                         @else
-                            <span class="check-miss">—</span> pH not recorded
+                            <span class="check-miss" aria-hidden="true">-</span> pH not recorded
                         @endif
                     </p>
                     <p>
                         @if($reading && $reading->temperature !== null)
-                            <span class="check-ok"><x-icon name="check" :size="14" /></span> Temperature available ({{ $reading->temperature }}°C)
+                            <span class="check-ok" aria-hidden="true"><x-icon name="check" :size="14" /></span> Temperature available ({{ round($reading->temperature) }}°C)
                         @else
-                            <span class="check-miss">—</span> Temperature not recorded
+                            <span class="check-miss" aria-hidden="true">-</span> Temperature not recorded
                         @endif
                     </p>
                     <p>
                         @if($reading && $reading->moisture !== null)
                             @if($reading->moisture_unit === 'raw index')
-                                <span class="check-warn">!</span> Moisture uncalibrated ({{ $reading->moisture }} raw)
+                                <span class="check-warn" aria-hidden="true">!</span> Moisture uncalibrated ({{ $reading->moisture }} raw)
                             @else
-                                <span class="check-ok"><x-icon name="check" :size="14" /></span> Moisture calibrated ({{ $reading->moisture }}%)
+                                <span class="check-ok" aria-hidden="true"><x-icon name="check" :size="14" /></span> Moisture calibrated ({{ $reading->moisture }}%)
                             @endif
                         @else
-                            <span class="check-miss">—</span> Moisture missing
+                            <span class="check-miss" aria-hidden="true">-</span> Moisture missing
                         @endif
                     </p>
                     <p>
                         @if($reading && $reading->ec !== null)
-                            <span class="check-ok"><x-icon name="check" :size="14" /></span> EC available ({{ $reading->ec }} mS/cm)
+                            <span class="check-ok" aria-hidden="true"><x-icon name="check" :size="14" /></span> EC available ({{ $reading->ec }} mS/cm)
                         @else
-                            <span class="check-miss">—</span> EC not measured
+                            <span class="check-miss" aria-hidden="true">-</span> EC not measured
                         @endif
                     </p>
                 </div>
@@ -124,62 +137,50 @@
                 </span>
             </div>
 
-            <a href="{{ route('report', ['id' => $latestSample?->sample_code]) }}" class="btn btn-primary" style="width: 100%;">
-                View full assessment
-            </a>
+            @if($latestSample)
+                <a href="{{ route('report', ['id' => $latestSample->sample_code]) }}" class="btn btn-primary btn-block">
+                    View full assessment
+                </a>
+            @else
+                <a href="{{ route('analysis') }}" class="btn btn-primary btn-block">
+                    Register first soil sample
+                </a>
+            @endif
         </section>
 
-        <!-- Trend Card -->
+        <!-- Real Soil pH Trend Card -->
         <section class="card trend">
             <div class="card-header">
                 <div>
                     <span class="section-kicker">Historical readings</span>
                     <h2>Soil pH trend</h2>
                 </div>
-                <select aria-label="Date range" id="trendRangeSelect">
+                <select aria-label="Trend time window" id="trendRangeSelect">
                     <option value="14">Last 14 days</option>
                     <option value="30">Last 30 days</option>
                 </select>
             </div>
 
             <div class="trend-summary">
-                <b>{{ $reading && $reading->ph !== null ? number_format($reading->ph, 1) : '6.2' }}</b>
-                <span>Latest pH</span>
-                <small>+0.2 from previous sample</small>
+                <b>{{ $reading && $reading->ph !== null ? number_format($reading->ph, 1) : 'Pending' }}</b>
+                <span>Latest measured pH</span>
+                <small id="dashboardTrendDelta">{{ $phTrendSeries['14']['delta_text'] ?? 'Recorded sample history' }}</small>
             </div>
 
-            <div class="chart-wrap">
-                <div class="chart-y">
-                    <span>7.0</span>
-                    <span>6.5</span>
-                    <span>6.0</span>
-                    <span>5.5</span>
+            @if($hasPhTrend)
+                <div class="dashboard-chart-box">
+                    <canvas id="dashboardPhChart" data-series='@json($phTrendSeries)' aria-label="Historical soil pH trend chart" role="img"></canvas>
                 </div>
-                <svg class="trend-chart" viewBox="0 0 700 190" preserveAspectRatio="none">
-                    <defs>
-                        <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0" stop-color="#22c55e" stop-opacity=".18"/>
-                            <stop offset="1" stop-color="#22c55e" stop-opacity="0"/>
-                        </linearGradient>
-                    </defs>
-                    <path class="gridline" d="M0 20H700M0 70H700M0 120H700M0 170H700"/>
-                    <path class="area" d="M0 133 C60 125 80 90 140 98 S220 116 280 82 S350 55 420 72 S500 108 560 70 S640 46 700 51 V190H0Z"/>
-                    <path class="line" d="M0 133 C60 125 80 90 140 98 S220 116 280 82 S350 55 420 72 S500 108 560 70 S640 46 700 51"/>
-                    <circle cx="700" cy="51" r="5"/>
-                </svg>
-                <div class="chart-x">
-                    <span>May 08</span>
-                    <span>May 10</span>
-                    <span>May 12</span>
-                    <span>May 14</span>
-                    <span>May 16</span>
-                    <span>Today</span>
+            @else
+                <div class="empty-state-box" style="margin-top: 16px;">
+                    <h3>No pH history yet</h3>
+                    <p>Record two or more samples with soil pH measurements to view historical trend lines.</p>
+                    <a href="{{ route('analysis') }}" class="btn btn-secondary">Record soil sample</a>
                 </div>
-            </div>
+            @endif
 
             <div class="legend">
-                <span><i class="line-key"></i> Measured pH</span>
-                <span><i class="band-key"></i> Candidate crop range</span>
+                <span><i class="line-key" aria-hidden="true"></i> Measured pH across recorded samples</span>
             </div>
         </section>
     </div>
@@ -219,20 +220,24 @@
                 <thead>
                     <tr>
                         <th>Sample ID</th>
-                        <th>Date & time</th>
+                        <th>Date &amp; time</th>
                         <th>Location</th>
                         <th>pH</th>
                         <th>Moisture</th>
                         <th>Temperature</th>
                         <th>EC</th>
                         <th>Assessment</th>
-                        <th></th>
+                        <th>Report</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach($samples as $sample)
-                        <tr onclick="window.location='{{ route('report', ['id' => $sample['id']]) }}'" style="cursor: pointer;">
-                            <td><b>{{ $sample['id'] }}</b></td>
+                    @forelse($samples as $sample)
+                        <tr>
+                            <td>
+                                <a href="{{ route('report', ['id' => $sample['id']]) }}">
+                                    <b>{{ $sample['id'] }}</b>
+                                </a>
+                            </td>
                             <td>{{ $sample['date'] }}</td>
                             <td>{{ $sample['location'] }}</td>
                             <td>{{ $sample['ph'] }}</td>
@@ -245,18 +250,25 @@
                                 </x-badge>
                             </td>
                             <td>
-                                <a href="{{ route('report', ['id' => $sample['id']]) }}" aria-label="View sample">
-                                    <x-icon name="chevron" :size="16" />
+                                <a href="{{ route('report', ['id' => $sample['id']]) }}" aria-label="View report for {{ $sample['id'] }}">
+                                    <span>View</span>
+                                    <x-icon name="chevron" :size="15" />
                                 </a>
                             </td>
                         </tr>
-                    @endforeach
+                    @empty
+                        <tr>
+                            <td colspan="9" style="text-align: center; padding: 24px; color: var(--muted);">
+                                No soil samples recorded yet.
+                            </td>
+                        </tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>
 
         <div class="pagination">
-            <span>Showing 1–{{ count($samples) }} of 18 samples</span>
+            <span>Showing {{ count($samples) > 0 ? '1–' . count($samples) : '0' }} of {{ $totalSamplesCount ?? count($samples) }} samples</span>
             <div>
                 <a href="{{ route('history') }}" class="btn btn-secondary">See all in History</a>
             </div>

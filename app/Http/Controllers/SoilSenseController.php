@@ -29,6 +29,9 @@ class SoilSenseController extends Controller
                 'name' => $crop->name,
                 'scientific' => $crop->scientific_name,
                 'range' => $req ? "pH {$req->min_ph}–{$req->max_ph}" : 'pH range pending',
+                'min_ph' => $req?->min_ph,
+                'max_ph' => $req?->max_ph,
+                'measured_ph' => null,
                 'status' => 'Potential Match',
                 'tone' => 'green',
                 'support' => 'pH and temperature align',
@@ -108,6 +111,9 @@ class SoilSenseController extends Controller
                     'name' => $crop->name,
                     'scientific' => $crop->scientific_name,
                     'range' => $req ? "pH {$req->min_ph}–{$req->max_ph}" : 'Pending',
+                    'min_ph' => $req?->min_ph,
+                    'max_ph' => $req?->max_ph,
+                    'measured_ph' => $reading?->ph,
                     'status' => $eval->suitability_tier,
                     'tone' => $eval->tone,
                     'support' => $eval->supporting_factors,
@@ -116,12 +122,15 @@ class SoilSenseController extends Controller
                 ];
             }
         } else {
-            $crops = CropProfile::with('requirements')->take(6)->get()->map(function ($crop) {
+            $crops = CropProfile::with('requirements')->take(6)->get()->map(function ($crop) use ($reading) {
                 $req = $crop->requirements;
                 return [
                     'name' => $crop->name,
                     'scientific' => $crop->scientific_name,
                     'range' => $req ? "pH {$req->min_ph}–{$req->max_ph}" : 'Pending',
+                    'min_ph' => $req?->min_ph,
+                    'max_ph' => $req?->max_ph,
+                    'measured_ph' => $reading?->ph,
                     'status' => 'Potential Match',
                     'tone' => 'green',
                     'support' => 'pH and temperature align',
@@ -147,6 +156,52 @@ class SoilSenseController extends Controller
             ];
         })->toArray();
 
+        $totalSamplesCount = SoilSample::count();
+
+        // Build chronological real pH trend series for 14-day and 30-day windows
+        $buildPhSeries = function (int $days) {
+            $cutoff = Carbon::now()->subDays($days);
+            $rows = SoilSample::with('latestReading')
+                ->where('collected_at', '>=', $cutoff)
+                ->orderBy('collected_at', 'asc')
+                ->get()
+                ->filter(fn ($s) => $s->latestReading && $s->latestReading->ph !== null)
+                ->values();
+
+            if ($rows->count() < 2) {
+                $rows = SoilSample::with('latestReading')
+                    ->orderBy('collected_at', 'desc')
+                    ->get()
+                    ->filter(fn ($s) => $s->latestReading && $s->latestReading->ph !== null)
+                    ->take($days)
+                    ->reverse()
+                    ->values();
+            }
+
+            $labels = $rows->map(fn ($s) => $s->collected_at->format('M d'))->all();
+            $values = $rows->map(fn ($s) => round((float) $s->latestReading->ph, 2))->all();
+
+            $deltaText = 'Single recorded pH reading';
+            if (count($values) >= 2) {
+                $diff = round($values[count($values) - 1] - $values[count($values) - 2], 2);
+                $sign = $diff > 0 ? '+' : '';
+                $deltaText = "{$sign}{$diff} vs previous sample";
+            } elseif (count($values) === 0) {
+                $deltaText = 'No pH readings recorded yet';
+            }
+
+            return [
+                'labels' => $labels,
+                'values' => $values,
+                'delta_text' => $deltaText,
+            ];
+        };
+
+        $phTrendSeries = [
+            '14' => $buildPhSeries(14),
+            '30' => $buildPhSeries(30),
+        ];
+
         // Device telemetry
         $device = IotDevice::where('device_uid', 'ESP32-01')->first() ?? IotDevice::first();
 
@@ -159,6 +214,8 @@ class SoilSenseController extends Controller
             'crops' => $crops,
             'measurements' => $measurements,
             'samples' => $samples,
+            'totalSamplesCount' => $totalSamplesCount,
+            'phTrendSeries' => $phTrendSeries,
         ]);
     }
 
@@ -299,7 +356,9 @@ class SoilSenseController extends Controller
      */
     public function crops(Request $request)
     {
-        $latestSample = SoilSample::with(['latestAssessment.cropEvaluations'])->latest('collected_at')->first();
+        $latestSample = SoilSample::with(['latestReading', 'latestAssessment.cropEvaluations'])->latest('collected_at')->first();
+        $latestReading = $latestSample?->latestReading;
+        $latestAssessment = $latestSample?->latestAssessment;
         $query = CropProfile::with('requirements');
 
         if ($request->filled('category') && $request->category !== 'All') {
@@ -314,15 +373,23 @@ class SoilSenseController extends Controller
             });
         }
 
-        $crops = $query->get()->map(function ($crop) use ($latestSample) {
+        $crops = $query->get()->map(function ($crop) use ($latestAssessment, $latestReading) {
             $req = $crop->requirements;
-            $eval = $latestSample?->latestAssessment?->cropEvaluations->firstWhere('crop_profile_id', $crop->id);
+            $eval = $latestAssessment?->cropEvaluations->firstWhere('crop_profile_id', $crop->id);
 
             return [
                 'name' => $crop->name,
                 'scientific' => $crop->scientific_name,
                 'category' => $crop->category,
                 'range' => $req ? "pH {$req->min_ph}–{$req->max_ph}" : 'Pending',
+                'min_ph' => $req?->min_ph,
+                'max_ph' => $req?->max_ph,
+                'measured_ph' => $latestReading?->ph,
+                'min_temp' => $req?->min_temperature,
+                'max_temp' => $req?->max_temperature,
+                'min_moisture' => $req?->min_moisture,
+                'max_moisture' => $req?->max_moisture,
+                'max_ec' => $req?->max_ec,
                 'status' => $eval?->suitability_tier ?? 'Potential Match',
                 'tone' => $eval?->tone ?? 'green',
                 'support' => $eval?->supporting_factors ?? 'pH and temperature align with documented requirements',
@@ -332,10 +399,15 @@ class SoilSenseController extends Controller
             ];
         })->toArray();
 
+        $usableParams = (int) ($latestAssessment?->usable_parameters_count ?? 0);
+        $totalParams = (int) ($latestAssessment?->total_parameters_count ?? 4);
+
         return view('crops', [
             'title' => 'Crop Recommendations',
             'crops' => $crops,
             'latestSample' => $latestSample,
+            'usableParams' => $usableParams,
+            'incompleteParams' => max(0, $totalParams - $usableParams),
         ]);
     }
 
@@ -629,16 +701,22 @@ class SoilSenseController extends Controller
     /**
      * Reports and Exports view
      */
-    public function reports()
+    public function reports(Request $request)
     {
-        $samples = SoilSample::with(['latestReading', 'latestAssessment'])
-            ->latest('collected_at')
-            ->take(10)
-            ->get();
+        $days = (int) $request->input('days', 0);
+        $query = SoilSample::with(['latestReading', 'latestAssessment'])
+            ->latest('collected_at');
+
+        if ($days > 0) {
+            $query->where('collected_at', '>=', Carbon::now()->subDays($days));
+        }
+
+        $samples = $query->take(20)->get();
 
         return view('reports', [
             'title' => 'Reports',
             'samples' => $samples,
+            'selectedDays' => $days,
         ]);
     }
 
