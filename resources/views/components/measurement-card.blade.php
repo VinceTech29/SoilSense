@@ -20,18 +20,18 @@
     <span class="metric-meta">{{ $item['meta'] }}</span>
 
     @if($item['value'] !== 'Pending')
-        <svg class="spark {{ ($item['tone'] ?? '') === 'amber' ? 'amber' : '' }}" viewBox="0 0 150 42" preserveAspectRatio="none">
-            <path class="spark-fill" d="M0 35 C16 31,22 36,37 26 S60 15,73 22 S96 34,108 19 S130 12,150 8 V42 H0Z"/>
-            <path d="M0 35 C16 31,22 36,37 26 S60 15,73 22 S96 34,108 19 S130 12,150 8"/>
-        </svg>
+        <div class="spark-note-bar">
+            <span>Status</span>
+            <b>{{ $item['badge'] }}</b>
+        </div>
     @else
         <div class="empty-spark">Waiting for a valid measurement</div>
     @endif
 
     <div class="measure-foot">
         <small>{{ $item['note'] }}</small>
-        <a href="{{ route('analysis') }}">
-            <span>Details</span>
+        <a href="{{ route('history') }}" aria-label="View {{ strtolower($item['name']) }} history">
+            <span>History</span>
             <x-icon name="chevron" :size="13" />
         </a>
     </div>

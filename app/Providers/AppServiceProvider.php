@@ -28,6 +28,16 @@ class AppServiceProvider extends ServiceProvider
                     $view->with('currentUser', null);
                 }
             }
+
+            if (!$view->offsetExists('sidebarDevice')) {
+                try {
+                    $device = \App\Models\IotDevice::where('device_uid', 'ESP32-01')->first()
+                        ?? \App\Models\IotDevice::first();
+                    $view->with('sidebarDevice', $device);
+                } catch (\Throwable $e) {
+                    $view->with('sidebarDevice', null);
+                }
+            }
         });
     }
 }
