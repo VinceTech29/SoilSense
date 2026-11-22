@@ -158,21 +158,24 @@ class SoilSenseController extends Controller
 
         $totalSamplesCount = SoilSample::count();
 
-        // Build chronological real pH trend series for 14-day and 30-day windows
-        $buildPhSeries = function (int $days) {
-            $cutoff = Carbon::now()->subDays($days);
-            $rows = SoilSample::with('latestReading')
-                ->where('collected_at', '>=', $cutoff)
-                ->orderBy('collected_at', 'asc')
-                ->get()
-                ->filter(fn ($s) => $s->latestReading && $s->latestReading->ph !== null)
+        // Build chronological real pH trend series for 14-day and 30-day windows from a single query
+        $cutoff30 = Carbon::now()->subDays(30);
+        $cutoff14 = Carbon::now()->subDays(14);
+        $phSamples = SoilSample::with('latestReading')
+            ->orderBy('collected_at', 'desc')
+            ->take(60)
+            ->get(['id', 'collected_at'])
+            ->filter(fn ($s) => $s->latestReading && $s->latestReading->ph !== null)
+            ->values();
+
+        $buildPhSeries = function (int $days, Carbon $cutoff) use ($phSamples) {
+            $rows = $phSamples
+                ->filter(fn ($s) => $s->collected_at >= $cutoff)
+                ->reverse()
                 ->values();
 
             if ($rows->count() < 2) {
-                $rows = SoilSample::with('latestReading')
-                    ->orderBy('collected_at', 'desc')
-                    ->get()
-                    ->filter(fn ($s) => $s->latestReading && $s->latestReading->ph !== null)
+                $rows = $phSamples
                     ->take($days)
                     ->reverse()
                     ->values();
@@ -198,12 +201,15 @@ class SoilSenseController extends Controller
         };
 
         $phTrendSeries = [
-            '14' => $buildPhSeries(14),
-            '30' => $buildPhSeries(30),
+            '14' => $buildPhSeries(14, $cutoff14),
+            '30' => $buildPhSeries(30, $cutoff30),
         ];
 
-        // Device telemetry
-        $device = IotDevice::where('device_uid', 'ESP32-01')->first() ?? IotDevice::first();
+        // Device telemetry (reuse across controller + sidebar layout within this request)
+        $device = $latestSample?->device_id && $latestSample->device?->device_uid === 'ESP32-01'
+            ? $latestSample->device
+            : (IotDevice::where('device_uid', 'ESP32-01')->first() ?? IotDevice::first());
+        request()?->attributes->set('soilsense.sidebar_device', $device);
 
         return view('dashboard', [
             'title' => 'Overview',
@@ -460,20 +466,20 @@ class SoilSenseController extends Controller
      */
     public function report($id = null)
     {
-        $sample = null;
-        if ($id) {
-            $sample = SoilSample::where('sample_code', $id)->first();
-        }
-
-        if (!$sample) {
-            $sample = SoilSample::latest('collected_at')->firstOrFail();
-        }
-
-        $sample->load([
+        $relations = [
             'latestReading.latestFertilizerRecommendation',
             'latestAssessment.cropEvaluations.crop.requirements',
             'device',
-        ]);
+        ];
+
+        $sample = null;
+        if ($id) {
+            $sample = SoilSample::with($relations)->where('sample_code', $id)->first();
+        }
+
+        if (!$sample) {
+            $sample = SoilSample::with($relations)->latest('collected_at')->firstOrFail();
+        }
 
         $reading = $sample->latestReading;
         $assessment = $sample->latestAssessment;
@@ -583,16 +589,12 @@ class SoilSenseController extends Controller
      */
     public function history(Request $request)
     {
-        $query = SoilSample::with([
-            'latestReading.latestFertilizerRecommendation',
-            'device',
-            'latestAssessment.cropEvaluations.crop',
-        ]);
+        $filterQuery = SoilSample::query();
 
         // Search by sample code, name, location, or operator
         if ($request->filled('search')) {
             $term = $request->search;
-            $query->where(function ($q) use ($term) {
+            $filterQuery->where(function ($q) use ($term) {
                 $q->where('sample_code', 'like', "%{$term}%")
                   ->orWhere('name', 'like', "%{$term}%")
                   ->orWhere('location', 'like', "%{$term}%");
@@ -601,18 +603,19 @@ class SoilSenseController extends Controller
 
         // Filter by assessment status
         if ($request->filled('status') && $request->status !== 'All') {
-            $query->where('assessment_status', strtolower($request->status));
+            $filterQuery->where('assessment_status', strtolower($request->status));
         }
 
         // Filter by date
         if ($request->filled('date')) {
-            $query->whereDate('collected_at', $request->date);
+            $filterQuery->whereDate('collected_at', $request->date);
         }
 
-        // Build chronological 4-sensor trend series across matching samples (oldest to newest)
-        $trendSamples = (clone $query)
+        // Build chronological 4-sensor trend series across matching samples using lightweight column/relation selection
+        $trendSamples = (clone $filterQuery)
+            ->with('latestReading')
             ->orderBy('collected_at', 'asc')
-            ->get();
+            ->get(['id', 'sample_code', 'collected_at']);
 
         $trendLabels = [];
         $trendPh = [];
@@ -647,7 +650,15 @@ class SoilSenseController extends Controller
             'has_data' => $hasSensorData,
         ];
 
-        $paginated = $query->latest('collected_at')->paginate(10)->withQueryString();
+        $paginated = $filterQuery
+            ->with([
+                'latestReading.latestFertilizerRecommendation',
+                'device',
+                'latestAssessment.cropEvaluations.crop',
+            ])
+            ->latest('collected_at')
+            ->paginate(10)
+            ->withQueryString();
 
         $samples = $paginated->map(function ($s) {
             $r = $s->latestReading;
@@ -726,6 +737,7 @@ class SoilSenseController extends Controller
     public function device()
     {
         $device = IotDevice::where('device_uid', 'ESP32-01')->first() ?? IotDevice::first();
+        request()?->attributes->set('soilsense.sidebar_device', $device);
         $recentReadings = SensorReading::latest('recorded_at')->take(5)->get();
 
         return view('device', [
@@ -741,6 +753,7 @@ class SoilSenseController extends Controller
     public function settings()
     {
         $user = User::first();
+        request()?->attributes->set('soilsense.current_user', $user);
 
         return view('settings', [
             'title' => 'Settings',

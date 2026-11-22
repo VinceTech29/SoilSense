@@ -26,7 +26,7 @@
         </div>
 
         <div class="hero-visual">
-            <img src="https://images.unsplash.com/photo-1609554259810-ad331c1a9519?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=85&w=1400" alt="Farmer assessing an agricultural field">
+            <img src="https://images.unsplash.com/photo-1609554259810-ad331c1a9519?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=85&w=1400" alt="Farmer assessing an agricultural field" decoding="async" fetchpriority="high">
 
             <div class="hero-panel card">
                 <div class="row">
@@ -115,7 +115,7 @@
     <!-- How It Works Section -->
     <section class="how-section" id="how">
         <div class="how-image">
-            <img src="https://images.unsplash.com/photo-1709456808420-061f2b8488d7?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=80&w=1000" alt="Rice fields in the Philippines" loading="lazy">
+            <img src="https://images.unsplash.com/photo-1709456808420-061f2b8488d7?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=80&w=1000" alt="Rice fields in the Philippines" loading="lazy" decoding="async">
             <span class="photo-caption">Agricultural decisions begin with reliable evidence.</span>
         </div>
 

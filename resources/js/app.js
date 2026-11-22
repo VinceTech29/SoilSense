@@ -1,7 +1,11 @@
 import './bootstrap';
-import Chart from 'chart.js/auto';
 
-window.Chart = Chart;
+async function loadChartConstructor() {
+    if (window.Chart) return window.Chart;
+    const { default: Chart } = await import('chart.js/auto');
+    window.Chart = Chart;
+    return Chart;
+}
 
 // Shared UI utilities (non-blocking inline toast replacing window.alert)
 window.SoilSenseUI = {
@@ -59,7 +63,7 @@ window.SoilSenseUI = {
     },
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // App Sidebar Mobile Drawer with focus management & Escape close
     const sidebar = document.getElementById('appSidebar');
     const overlay = document.getElementById('sidebarOverlay');
@@ -122,12 +126,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Dashboard Real Soil pH Trend Chart (Chart.js)
+    // Dashboard Real Soil pH Trend Chart (Chart.js, lazy-loaded only on chart pages)
     const dashboardPhCanvas = document.getElementById('dashboardPhChart');
     const trendRangeSelect = document.getElementById('trendRangeSelect');
     const trendDeltaLabel = document.getElementById('dashboardTrendDelta');
     if (dashboardPhCanvas && dashboardPhCanvas.dataset.series) {
         try {
+            const Chart = await loadChartConstructor();
             const allSeries = JSON.parse(dashboardPhCanvas.dataset.series);
             let phChartInstance = null;
 
@@ -208,13 +213,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Initialize Chart.js 4-Sensor Trend Lines on Sample History page
+    // Initialize Chart.js 4-Sensor Trend Lines on Sample History page (lazy-loaded)
     // Left Y-axis: Soil pH & EC (mS/cm); Right Y-axis: Moisture (%) & Temperature (°C)
     const sensorCanvas = document.getElementById('sensorTrendChart');
     if (sensorCanvas && sensorCanvas.dataset.trend) {
         try {
             const trend = JSON.parse(sensorCanvas.dataset.trend);
             if (Array.isArray(trend.labels) && trend.labels.length > 0 && trend.has_data) {
+                const Chart = await loadChartConstructor();
                 new Chart(sensorCanvas, {
                     type: 'line',
                     data: {

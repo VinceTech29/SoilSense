@@ -46,6 +46,7 @@ class RainGuardService
 
         try {
             $response = Http::acceptJson()
+                ->connectTimeout(min(2, $timeoutSeconds))
                 ->timeout($timeoutSeconds)
                 ->get($openMeteoUrl, [
                     'latitude' => $resolvedLat,

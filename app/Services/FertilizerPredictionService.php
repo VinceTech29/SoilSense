@@ -111,12 +111,19 @@ class FertilizerPredictionService
         ];
 
         try {
+            $connectTimeout = min(2, $timeoutSeconds);
             $request = Http::acceptJson()
                 ->withHeaders(['X-API-KEY' => $apiKey])
+                ->connectTimeout($connectTimeout)
                 ->timeout($timeoutSeconds);
 
             if ($retryTimes > 0) {
-                $request = $request->retry(1 + $retryTimes, 10, throw: false);
+                $request = $request->retry(
+                    1 + $retryTimes,
+                    10,
+                    fn (\Exception $e) => !($e instanceof \Illuminate\Http\Client\ConnectionException),
+                    throw: false
+                );
             }
 
             $response = $request->post("{$baseUrl}/predict", $payload);

@@ -13,7 +13,7 @@
 
 <article class="crop-card card">
     <div class="crop-image">
-        <img src="{{ $crop['image'] ?? 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=800' }}" alt="{{ $crop['name'] }} growing in a farm" loading="lazy">
+        <img src="{{ $crop['image'] ?? 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&q=80&w=800' }}" alt="{{ $crop['name'] }} growing in a farm" loading="lazy" decoding="async">
         <span class="sim-label">{{ $measuredPh !== null ? 'Evaluated profile' : 'Reference profile' }}</span>
     </div>
     <div class="crop-body">

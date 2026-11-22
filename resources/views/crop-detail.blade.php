@@ -40,7 +40,7 @@
 
     <!-- Crop Hero Header -->
     <section class="crop-hero card">
-        <img src="{{ $crop['image'] }}" alt="{{ $crop['name'] }} growing on a farm">
+        <img src="{{ $crop['image'] }}" alt="{{ $crop['name'] }} growing on a farm" decoding="async" fetchpriority="high">
         <div>
             <x-badge :tone="$crop['tone']">{{ $crop['status'] }}</x-badge>
             <span class="section-kicker" style="margin-top: 10px;">Crop suitability profile</span>
