@@ -206,7 +206,7 @@ textarea { min-height: 92px; resize: vertical; }
 .device-id span:not(.device-icon), .device-detail span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
 .device-id b, .device-detail b { font-size: 13px; color: #18221c; }
 .device-detail { padding-left: 20px; border-left: 1px solid var(--line); }
-.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 18px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 18px; }
 .measure-card { padding: 17px; min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
 .measure-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 13px; }
 .metric-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; flex-shrink: 0; }
@@ -401,7 +401,7 @@ footer > small { grid-column: 1 / -1; padding-top: 20px; border-top: 1px solid #
 @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(34,197,94,.12); } }
 .connection-panel h3 { margin: 8px 0 3px; }
 .connection-panel p { margin: 0; font-size: 11px; }
-.live-readings { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 14px; }
+.live-readings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
 .live-reading-card {
     display: flex;
     flex-direction: column;

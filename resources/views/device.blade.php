@@ -79,15 +79,6 @@
                 <x-badge tone="green">Reporting</x-badge>
                 <span><small>Calibration</small><b>Factory digital probe</b></span>
             </div>
-            <div class="sensor-row">
-                <span class="sensor-status gray" aria-hidden="true"></span>
-                <div>
-                    <b>EC probe</b>
-                    <small>Output unit: mS/cm</small>
-                </div>
-                <x-badge tone="gray">Optional</x-badge>
-                <span><small>Calibration</small><b>Verify 1.41 mS/cm ref</b></span>
-            </div>
         </section>
 
         <!-- API Endpoint Communication Panel -->

@@ -221,60 +221,66 @@ document.addEventListener('DOMContentLoaded', async () => {
             const trend = JSON.parse(sensorCanvas.dataset.trend);
             if (Array.isArray(trend.labels) && trend.labels.length > 0 && trend.has_data) {
                 const Chart = await loadChartConstructor();
+                const hasEc = Array.isArray(trend.ec) && trend.ec.some(v => v !== null && v !== undefined);
+                const datasets = [
+                    {
+                        label: 'Soil pH',
+                        data: trend.ph,
+                        yAxisID: 'yLeft',
+                        borderColor: '#166534',
+                        backgroundColor: 'rgba(22, 101, 52, 0.12)',
+                        tension: 0.3,
+                        spanGaps: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 2.5,
+                    },
+                    {
+                        label: 'Moisture (%)',
+                        data: trend.moisture,
+                        yAxisID: 'yRight',
+                        borderColor: '#1d4ed8',
+                        backgroundColor: 'rgba(29, 78, 216, 0.12)',
+                        tension: 0.3,
+                        spanGaps: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 2.5,
+                    },
+                    {
+                        label: 'Temperature (°C)',
+                        data: trend.temperature,
+                        yAxisID: 'yRight',
+                        borderColor: '#b45309',
+                        backgroundColor: 'rgba(180, 83, 9, 0.12)',
+                        tension: 0.3,
+                        spanGaps: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 2.5,
+                    },
+                ];
+
+                if (hasEc) {
+                    datasets.splice(1, 0, {
+                        label: 'EC (mS/cm)',
+                        data: trend.ec,
+                        yAxisID: 'yLeft',
+                        borderColor: '#7c3aed',
+                        backgroundColor: 'rgba(124, 58, 237, 0.12)',
+                        tension: 0.3,
+                        spanGaps: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        borderWidth: 2.5,
+                    });
+                }
+
                 new Chart(sensorCanvas, {
                     type: 'line',
                     data: {
                         labels: trend.labels,
-                        datasets: [
-                            {
-                                label: 'Soil pH',
-                                data: trend.ph,
-                                yAxisID: 'yLeft',
-                                borderColor: '#166534',
-                                backgroundColor: 'rgba(22, 101, 52, 0.12)',
-                                tension: 0.3,
-                                spanGaps: true,
-                                pointRadius: 4,
-                                pointHoverRadius: 6,
-                                borderWidth: 2.5,
-                            },
-                            {
-                                label: 'EC (mS/cm)',
-                                data: trend.ec,
-                                yAxisID: 'yLeft',
-                                borderColor: '#7c3aed',
-                                backgroundColor: 'rgba(124, 58, 237, 0.12)',
-                                tension: 0.3,
-                                spanGaps: true,
-                                pointRadius: 4,
-                                pointHoverRadius: 6,
-                                borderWidth: 2.5,
-                            },
-                            {
-                                label: 'Moisture (%)',
-                                data: trend.moisture,
-                                yAxisID: 'yRight',
-                                borderColor: '#1d4ed8',
-                                backgroundColor: 'rgba(29, 78, 216, 0.12)',
-                                tension: 0.3,
-                                spanGaps: true,
-                                pointRadius: 4,
-                                pointHoverRadius: 6,
-                                borderWidth: 2.5,
-                            },
-                            {
-                                label: 'Temperature (°C)',
-                                data: trend.temperature,
-                                yAxisID: 'yRight',
-                                borderColor: '#b45309',
-                                backgroundColor: 'rgba(180, 83, 9, 0.12)',
-                                tension: 0.3,
-                                spanGaps: true,
-                                pointRadius: 4,
-                                pointHoverRadius: 6,
-                                borderWidth: 2.5,
-                            },
-                        ],
+                        datasets: datasets,
                     },
                     options: {
                         responsive: true,
@@ -324,7 +330,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 },
                                 title: {
                                     display: true,
-                                    text: 'pH / EC (mS/cm)',
+                                    text: hasEc ? 'pH / EC (mS/cm)' : 'Soil pH',
                                     color: '#526174',
                                     font: { family: 'Inter, sans-serif', size: 11, weight: '600' },
                                 },

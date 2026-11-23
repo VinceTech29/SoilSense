@@ -2,8 +2,8 @@
 
 @section('content')
     @php
-        $usableCount = (int) ($assessment?->usable_parameters_count ?? 0);
-        $totalCount = (int) ($assessment?->total_parameters_count ?? 4);
+        $usableCount = min((int) ($assessment?->usable_parameters_count ?? 3), 3);
+        $totalCount = 3;
         $ringPct = $totalCount > 0 ? round(($usableCount / $totalCount) * 100) : 0;
         $isDemo = $latestSample ? $latestSample->source_type === 'demo' : true;
         $phLabels = $phTrendSeries['14']['labels'] ?? [];
@@ -118,13 +118,6 @@
                             <span class="check-miss" aria-hidden="true">-</span> Moisture missing
                         @endif
                     </p>
-                    <p>
-                        @if($reading && $reading->ec !== null)
-                            <span class="check-ok" aria-hidden="true"><x-icon name="check" :size="14" /></span> EC available ({{ $reading->ec }} mS/cm)
-                        @else
-                            <span class="check-miss" aria-hidden="true">-</span> EC not measured
-                        @endif
-                    </p>
                 </div>
             </div>
 
@@ -224,7 +217,6 @@
                         <th>pH</th>
                         <th>Moisture</th>
                         <th>Temperature</th>
-                        <th>EC</th>
                         <th>Assessment</th>
                         <th>Report</th>
                     </tr>
@@ -242,7 +234,6 @@
                             <td>{{ $sample['ph'] }}</td>
                             <td>{{ $sample['moisture'] }}</td>
                             <td>{{ $sample['temperature'] }}</td>
-                            <td>{{ $sample['ec'] }}</td>
                             <td>
                                 <x-badge :tone="$sample['assessment'] === 'Reviewed' ? 'green' : 'amber'">
                                     {{ $sample['assessment'] }}
@@ -257,7 +248,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" style="text-align: center; padding: 24px; color: var(--muted);">
+                            <td colspan="8" style="text-align: center; padding: 24px; color: var(--muted);">
                                 No soil samples recorded yet.
                             </td>
                         </tr>

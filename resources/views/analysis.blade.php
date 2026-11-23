@@ -203,19 +203,6 @@
                                 <span class="live-dot"></span>Calibrated · Live
                             </div>
                         </div>
-
-                        <div class="live-reading-card">
-                            <div class="live-reading-header">
-                                <span class="live-reading-icon"><x-icon name="bolt" :size="15" /></span>
-                                <span class="live-reading-label">Conductivity (EC)</span>
-                            </div>
-                            <div class="live-reading-value">
-                                <b id="liveValEc">--<span class="unit">mS/cm</span></b>
-                            </div>
-                            <div class="live-reading-status">
-                                <span class="live-dot"></span>Sensors Active
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -252,11 +239,6 @@
                                 <option value="raw index" {{ old('moisture_unit') === 'raw index' ? 'selected' : '' }}>Raw sensor index (uncalibrated)</option>
                             </select>
                             @error('moisture_unit') <span class="field-error">{{ $message }}</span> @enderror
-                        </label>
-                        <label class="full">
-                            <span>Electrical conductivity (mS/cm, optional)</span>
-                            <input type="number" step="0.01" id="manualEc" value="{{ old('ec', '') }}" min="0" max="30" placeholder="e.g. 1.25 (leave blank if not measured)">
-                            @error('ec') <span class="field-error">{{ $message }}</span> @enderror
                         </label>
                     </div>
                 </div>
@@ -296,7 +278,7 @@
                     </p>
                     <p class="quality-row" id="checkReadings">
                         <span class="check-miss" aria-hidden="true">-</span>
-                        <span>All 4 sensor channels provided</span>
+                        <span>All 3 sensor channels provided</span>
                     </p>
                     <p class="quality-row" id="checkStability">
                         <span class="check-miss" aria-hidden="true">-</span>
@@ -342,7 +324,6 @@
         const manualMoisture = document.getElementById('manualMoisture');
         const manualMoistureUnit = document.getElementById('manualMoistureUnit');
         const manualTemp = document.getElementById('manualTemp');
-        const manualEc = document.getElementById('manualEc');
 
         const qualityRing = document.getElementById('qualityRing');
         const qualityRatio = document.getElementById('qualityRatio');
@@ -371,17 +352,16 @@
             const moistVal = parseFloat(formMoisture.value);
             const moistCalibrated = formMoisture.value !== '' && !Number.isNaN(moistVal) && formMoistureUnit.value === '% VWC';
             const tempOk = formTemp.value !== '' && !Number.isNaN(parseFloat(formTemp.value));
-            const ecOk = formEc && formEc.value !== '' && !Number.isNaN(parseFloat(formEc.value));
-            const allFour = phOk && formMoisture.value !== '' && tempOk;
+            const allThree = phOk && formMoisture.value !== '' && tempOk;
             const sourceVerified = testingMethodInput.value === 'manual_entry' || isTesting;
 
             setCheckState(checkMetadata, metaOk, 'Sample metadata complete');
             setCheckState(checkPh, phOk, 'pH reading valid (0 to 14)');
             setCheckState(checkMoisture, moistCalibrated, 'Calibrated moisture (% VWC)');
-            setCheckState(checkReadings, allFour, 'Sensor channels verified');
+            setCheckState(checkReadings, allThree, 'All 3 sensor channels verified');
             setCheckState(checkStability, sourceVerified, testingMethodInput.value === 'manual_entry' ? 'Manual values ready to submit' : 'Live telemetry stream active');
 
-            const score = [metaOk, phOk, moistCalibrated, allFour, sourceVerified].filter(Boolean).length;
+            const score = [metaOk, phOk, moistCalibrated, allThree, sourceVerified].filter(Boolean).length;
             const pct = Math.round((score / 5) * 100);
             qualityRatio.textContent = `${score}/5`;
             qualityRing.style.setProperty('--pct', pct);
@@ -401,7 +381,6 @@
             formMoisture.value = manualMoisture.value;
             if (manualMoistureUnit) formMoistureUnit.value = manualMoistureUnit.value;
             formTemp.value = manualTemp.value;
-            if (manualEc) formEc.value = manualEc.value;
             refreshChecklist();
         }
 
@@ -439,7 +418,7 @@
             });
         });
 
-        [manualPh, manualMoisture, manualMoistureUnit, manualTemp, manualEc].forEach(inp => {
+        [manualPh, manualMoisture, manualMoistureUnit, manualTemp].forEach(inp => {
             if (!inp) return;
             inp.addEventListener('input', () => {
                 if (testingMethodInput.value === 'manual_entry') syncManualToForm();
@@ -479,18 +458,15 @@
                         const phElem = document.getElementById('liveValPh');
                         const moistElem = document.getElementById('liveValMoisture');
                         const tempElem = document.getElementById('liveValTemp');
-                        const ecElem = document.getElementById('liveValEc');
 
                         if (phElem) phElem.textContent = r.ph;
                         if (moistElem) moistElem.innerHTML = `${r.moisture}<span class="unit">%</span>`;
                         if (tempElem) tempElem.innerHTML = `${r.temperature}<span class="unit">°C</span>`;
-                        if (ecElem) ecElem.innerHTML = `1.15<span class="unit">mS/cm</span>`;
 
                         formPh.value = r.ph;
                         formMoisture.value = r.moisture;
                         formMoistureUnit.value = "% VWC";
                         formTemp.value = r.temperature;
-                        formEc.value = "1.15";
                         
                         statusText.textContent = `Live data updated ${r.time_ago} (Hardware: ESP32-01).`;
                         refreshChecklist();

@@ -28,12 +28,11 @@
         @endif
     </form>
 
-    <!-- 4-Sensor Telemetry Trend Chart -->
+    <!-- Sensor Telemetry Trend Chart -->
     @php
         $trendPayload = $sensorTrend ?? [
             'labels' => [],
             'ph' => [],
-            'ec' => [],
             'moisture' => [],
             'temperature' => [],
             'has_data' => false,
@@ -42,13 +41,12 @@
     <section class="card sensor-trend-card" id="sensorTrendSection">
         <div class="sensor-trend-head">
             <div>
-                <span class="section-kicker">4-sensor telemetry trends</span>
-                <h2>Soil Sensor Trend Lines (pH, EC, Moisture &amp; Temperature)</h2>
-                <p>Chronological 4-sensor measurements across recorded samples: pH and EC (mS/cm) on the left axis; Moisture (%) and Temperature (°C) on the right axis.</p>
+                <span class="section-kicker">Sensor telemetry trends</span>
+                <h2>Soil Sensor Trend Lines (pH, Moisture &amp; Temperature)</h2>
+                <p>Chronological measurements across recorded samples: pH on the left axis; Moisture (%) and Temperature (°C) on the right axis.</p>
             </div>
             <div class="sensor-pills">
                 <span class="sensor-pill"><i class="dot-ph" aria-hidden="true"></i> Soil pH</span>
-                <span class="sensor-pill"><i class="dot-ec" aria-hidden="true"></i> EC (mS/cm)</span>
                 <span class="sensor-pill"><i class="dot-moisture" aria-hidden="true"></i> Moisture (%)</span>
                 <span class="sensor-pill"><i class="dot-temp" aria-hidden="true"></i> Temperature (°C)</span>
             </div>
@@ -56,12 +54,12 @@
 
         @if($trendPayload['has_data'])
             <div class="sensor-chart-container">
-                <canvas id="sensorTrendChart" data-trend='@json($trendPayload)' aria-label="Soil 4-sensor telemetry trend chart" role="img"></canvas>
+                <canvas id="sensorTrendChart" data-trend='@json($trendPayload)' aria-label="Soil sensor telemetry trend chart" role="img"></canvas>
             </div>
         @else
             <div class="fert-empty-state" style="margin-bottom: 0;">
                 <canvas id="sensorTrendChart" data-trend='@json($trendPayload)' hidden></canvas>
-                <p style="margin: 0;">No sensor telemetry readings are recorded for the current filter. Register a new soil sample to view 4-sensor trend lines.</p>
+                <p style="margin: 0;">No sensor telemetry readings are recorded for the current filter. Register a new soil sample to view sensor trend lines.</p>
             </div>
         @endif
     </section>
@@ -211,7 +209,6 @@
                 ['Soil pH', s1.ph, s2.ph],
                 ['Soil Moisture', s1.moisture, s2.moisture],
                 ['Soil Temperature', s1.temperature, s2.temperature],
-                ['Salinity (EC)', s1.ec, s2.ec],
                 ['Recommended Fertilizer', s1.fertilizer || 'Not generated', s2.fertilizer || 'Not generated'],
                 ['Valid Data', s1.valid_count, s2.valid_count],
                 ['Assessment Status', s1.assessment, s2.assessment],

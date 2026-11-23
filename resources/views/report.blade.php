@@ -2,8 +2,8 @@
 
 @section('content')
     @php
-        $usableCount = (int) ($assessment?->usable_parameters_count ?? 0);
-        $totalCount = (int) ($assessment?->total_parameters_count ?? 4);
+        $usableCount = min((int) ($assessment?->usable_parameters_count ?? 3), 3);
+        $totalCount = 3;
         $completenessPct = $totalCount > 0 ? round(($usableCount / $totalCount) * 100) : 0;
 
         $phCalibration = $reading && $reading->ph !== null ? 'pH: recorded' : 'pH: pending';
@@ -59,7 +59,7 @@
                 {{ ucfirst($assessment?->status ?? 'Incomplete evidence') }}
             </x-badge>
             <h2>Executive summary</h2>
-            <p>{{ $assessment?->summary ?? 'Available sensor readings are evaluated against documented crop ranges. Uncalibrated moisture and missing channels remain transparently flagged.' }}</p>
+            <p>{{ $assessment?->summary ?? 'The available pH, moisture, and temperature readings support an initial crop-range comparison. No universal soil health conclusion is made.' }}</p>
         </div>
         <div class="report-complete">
             <span>Assessment completeness</span>

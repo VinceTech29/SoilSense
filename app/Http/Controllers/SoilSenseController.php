@@ -141,7 +141,6 @@ class SoilSenseController extends Controller
                 'ph' => $r && $r->ph !== null ? number_format($r->ph, 1) : '—',
                 'moisture' => $r && $r->moisture !== null ? "{$r->moisture} {$r->moisture_unit}" : '—',
                 'temperature' => $r && $r->temperature !== null ? "{$r->temperature}°C" : '—',
-                'ec' => $r && $r->ec !== null ? "{$r->ec} {$r->ec_unit}" : 'Pending',
                 'assessment' => ucfirst($s->assessment_status),
             ];
         })->toArray();
@@ -402,8 +401,8 @@ class SoilSenseController extends Controller
             ];
         })->toArray();
 
-        $usableParams = (int) ($latestAssessment?->usable_parameters_count ?? 0);
-        $totalParams = (int) ($latestAssessment?->total_parameters_count ?? 4);
+        $usableParams = min((int) ($latestAssessment?->usable_parameters_count ?? 0), 3);
+        $totalParams = 3;
 
         return view('crops', [
             'title' => 'Crop Recommendations',
@@ -657,7 +656,6 @@ class SoilSenseController extends Controller
                 if ($r->ph !== null) $validCount++;
                 if ($r->temperature !== null) $validCount++;
                 if ($r->moisture !== null) $validCount++;
-                if ($r->ec !== null) $validCount++;
             }
 
             $topCrops = 'Pending evaluation';
@@ -679,11 +677,10 @@ class SoilSenseController extends Controller
                 'ph' => $r && $r->ph !== null ? number_format($r->ph, 1) : '—',
                 'moisture' => $r && $r->moisture !== null ? "{$r->moisture} {$r->moisture_unit}" : '—',
                 'temperature' => $r && $r->temperature !== null ? "{$r->temperature}°C" : '—',
-                'ec' => $r && $r->ec !== null ? "{$r->ec} {$r->ec_unit}" : 'Pending',
                 'fertilizer' => $fert?->predicted_fertilizer,
                 'assessment' => ucfirst($s->assessment_status),
                 'device' => $s->device?->name ?? 'ESP32-01',
-                'valid_count' => "{$validCount} of 4",
+                'valid_count' => "{$validCount} of 3",
                 'crops' => $topCrops,
             ];
         })->toArray();
