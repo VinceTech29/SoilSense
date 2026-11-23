@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreSoilSampleRequest;
+use App\Http\Resources\FertilizerRecommendationResource;
 use App\Models\CropProfile;
 use App\Models\IotDevice;
 use App\Models\SensorReading;
@@ -11,6 +12,7 @@ use App\Models\SoilAssessment;
 use App\Models\SoilSample;
 use App\Models\User;
 use App\Services\CropSuitabilityService;
+use App\Services\FertilizerRecommendationService;
 use App\Services\SoilAssessmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +24,8 @@ class MobileApiController extends Controller
 {
     public function __construct(
         protected SoilAssessmentService $soilAssessmentService,
-        protected CropSuitabilityService $cropSuitabilityService
+        protected CropSuitabilityService $cropSuitabilityService,
+        protected FertilizerRecommendationService $fertilizerRecommendationService
     ) {}
 
     /**
@@ -349,6 +352,9 @@ class MobileApiController extends Controller
                 'sample_code' => 'SS-' . date('Y') . '-TEMP-' . uniqid('', true),
                 'name' => $validated['name'],
                 'location' => $validated['location'] ?? 'Mobile Field Sample',
+                'latitude' => $validated['latitude'] ?? null,
+                'longitude' => $validated['longitude'] ?? null,
+                'soil_type' => $validated['soil_type'] ?? null,
                 'collected_at' => Carbon::parse($validated['collected_at']),
                 'testing_method' => $validated['testing_method'],
                 'source_type' => $sourceType,
@@ -365,7 +371,12 @@ class MobileApiController extends Controller
 
             // If reading data was provided, record sensor reading
             $reading = null;
-            if (isset($validated['ph']) || isset($validated['moisture']) || isset($validated['temperature']) || isset($validated['ec'])) {
+            if (
+                isset($validated['ph'])
+                || isset($validated['moisture'])
+                || isset($validated['temperature'])
+                || isset($validated['ec'])
+            ) {
                 $reading = SensorReading::create([
                     'soil_sample_id' => $sample->id,
                     'device_id' => $sample->device_id,
@@ -382,15 +393,28 @@ class MobileApiController extends Controller
             }
 
             // Run automated agronomic assessment
-            $this->soilAssessmentService->evaluateSample($sample, $reading);
+            $assessment = $this->soilAssessmentService->evaluateSample($sample, $reading);
 
-            $freshSample = $sample->fresh(['latestReading', 'latestAssessment.cropEvaluations.crop']);
+            if ($reading) {
+                try {
+                    $this->fertilizerRecommendationService->recommend($sample, $reading, $assessment);
+                } catch (\Throwable $e) {
+                    // Fail safe
+                }
+            }
+
+            $freshSample = $sample->fresh(['latestReading.latestFertilizerRecommendation', 'latestAssessment.cropEvaluations.crop']);
             $sampleData = $freshSample->toArray();
             $sampleData['crop_evaluations'] = $freshSample->latestAssessment?->cropEvaluations->map(function ($eval) {
                 $evalArr = $eval->toArray();
                 $evalArr['crop_name'] = $eval->crop?->name;
                 return $evalArr;
             })->values()->all() ?? [];
+
+            $fertRec = $freshSample->latestReading?->latestFertilizerRecommendation;
+            $sampleData['fertilizer_recommendation'] = $fertRec
+                ? (new FertilizerRecommendationResource($fertRec))->resolve(request())
+                : null;
 
             return $sampleData;
         });
@@ -408,7 +432,7 @@ class MobileApiController extends Controller
     public function showAssessment(int|string $id): JsonResponse
     {
         $assessment = SoilAssessment::with([
-            'soilSample.latestReading',
+            'soilSample.latestReading.latestFertilizerRecommendation',
             'cropEvaluations.crop',
         ])->find($id);
 
@@ -420,6 +444,9 @@ class MobileApiController extends Controller
         }
 
         $sample = $assessment->soilSample;
+        $reading = $sample?->latestReading;
+        $fertilizerRecommendation = $reading?->latestFertilizerRecommendation;
+
         $evaluations = $assessment->cropEvaluations->map(function ($eval) {
             $data = $eval->toArray();
             $data['crop_name'] = $eval->crop?->name;
@@ -429,6 +456,9 @@ class MobileApiController extends Controller
         $data = $assessment->toArray();
         $data['sample'] = $sample;
         $data['crop_evaluations'] = $evaluations;
+        $data['fertilizer_recommendation'] = $fertilizerRecommendation
+            ? (new FertilizerRecommendationResource($fertilizerRecommendation))->resolve(request())
+            : null;
 
         return response()->json([
             'success' => true,
@@ -459,7 +489,7 @@ class MobileApiController extends Controller
         $sample = SoilSample::where('sample_code', $id)
             ->orWhere('id', is_numeric($id) ? (int) $id : 0)
             ->with([
-                'latestReading',
+                'latestReading.latestFertilizerRecommendation',
                 'latestAssessment.cropEvaluations.crop.requirements',
                 'device',
             ])
@@ -474,6 +504,27 @@ class MobileApiController extends Controller
 
         $reading = $sample->latestReading;
         $assessment = $sample->latestAssessment;
+        $fertilizerRecommendation = $reading?->latestFertilizerRecommendation;
+
+        $hasUsableTelemetry = $reading && (
+            $reading->ph !== null
+            || $reading->moisture !== null
+            || $reading->temperature !== null
+            || $reading->ec !== null
+        );
+
+        if ($hasUsableTelemetry && !$fertilizerRecommendation) {
+            try {
+                $fertilizerRecommendation = $this->fertilizerRecommendationService->recommend(
+                    $sample,
+                    $reading,
+                    $assessment
+                );
+                $reading->setRelation('latestFertilizerRecommendation', $fertilizerRecommendation);
+            } catch (\Throwable $e) {
+                $fertilizerRecommendation = null;
+            }
+        }
 
         $measurements = [
             'ph' => [
@@ -541,8 +592,131 @@ class MobileApiController extends Controller
                     'missing_information' => $assessment?->missing_information,
                 ],
                 'measurements' => $measurements,
+                'fertilizer_recommendation' => $fertilizerRecommendation
+                    ? (new FertilizerRecommendationResource($fertilizerRecommendation))->resolve(request())
+                    : null,
             ],
         ]);
+    }
+
+    /**
+     * Get or auto-generate the FertilizerRecommendation for a specific sample (Token-Authenticated)
+     */
+    public function sampleFertilizer(Request $request, string $id): JsonResponse
+    {
+        $sample = SoilSample::where('sample_code', $id)
+            ->orWhere('id', is_numeric($id) ? (int) $id : 0)
+            ->with([
+                'latestReading.latestFertilizerRecommendation',
+                'latestAssessment.cropEvaluations.crop',
+            ])
+            ->first();
+
+        if (!$sample) {
+            return response()->json([
+                'success' => false,
+                'message' => "Soil sample '{$id}' not found.",
+                'code' => 'SAMPLE_NOT_FOUND',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $reading = $sample->latestReading;
+        $recommendation = $reading?->latestFertilizerRecommendation;
+
+        if (!$recommendation) {
+            if (
+                !$reading
+                || ($reading->ph === null && $reading->moisture === null && $reading->temperature === null && $reading->ec === null)
+            ) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'At least one soil sensor measurement (pH, moisture, temperature, or EC) is required before generating a fertilizer recommendation.',
+                    'code' => 'TELEMETRY_REQUIRED',
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $recommendation = $this->fertilizerRecommendationService->recommend(
+                $sample,
+                $reading,
+                $sample->latestAssessment,
+                $request->query('crop') ? (string) $request->query('crop') : null
+            );
+        }
+
+        $recommendation->setRelation('reading', $reading);
+
+        return response()->json([
+            'success' => true,
+            'data' => (new FertilizerRecommendationResource($recommendation))->resolve($request),
+        ]);
+    }
+
+    /**
+     * Compute or refresh a FertilizerRecommendation for a sample using 4-sensor telemetry + crop/soil type (Token-Authenticated)
+     */
+    public function storeSampleFertilizer(Request $request, string $id): JsonResponse
+    {
+        $sample = SoilSample::where('sample_code', $id)
+            ->orWhere('id', is_numeric($id) ? (int) $id : 0)
+            ->with([
+                'latestReading',
+                'latestAssessment.cropEvaluations.crop',
+            ])
+            ->first();
+
+        if (!$sample) {
+            return response()->json([
+                'success' => false,
+                'message' => "Soil sample '{$id}' not found.",
+                'code' => 'SAMPLE_NOT_FOUND',
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $validated = $request->validate([
+            'crop' => ['nullable', 'string', 'max:100'],
+            'soil_type' => ['nullable', 'string', 'in:Sandy,Silt,Loamy,Clay'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+        ]);
+
+        $reading = $sample->latestReading;
+        if (
+            !$reading
+            || ($reading->ph === null && $reading->moisture === null && $reading->temperature === null && $reading->ec === null)
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'At least one soil sensor measurement (pH, moisture, temperature, or EC) is required to generate a fertilizer recommendation.',
+                'code' => 'TELEMETRY_REQUIRED',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $recommendation = DB::transaction(function () use ($sample, $reading, $validated) {
+            $sampleUpdates = [];
+            foreach (['soil_type', 'latitude', 'longitude'] as $field) {
+                if (array_key_exists($field, $validated) && $validated[$field] !== null) {
+                    $sampleUpdates[$field] = $validated[$field];
+                }
+            }
+            if ($sampleUpdates !== []) {
+                $sample->update($sampleUpdates);
+            }
+
+            $rec = $this->fertilizerRecommendationService->recommend(
+                $sample,
+                $reading,
+                $sample->latestAssessment,
+                $validated['crop'] ?? null
+            );
+            $rec->setRelation('reading', $reading);
+
+            return $rec;
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => (new FertilizerRecommendationResource($recommendation))->resolve($request),
+        ], Response::HTTP_CREATED);
     }
 
     /**

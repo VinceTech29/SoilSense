@@ -28,6 +28,9 @@ class StoreSoilSampleRequest extends FormRequest
             'temperature' => ['nullable', 'numeric', 'between:-10,60'],
             'ec' => ['nullable', 'numeric', 'min:0'],
             'ec_unit' => ['nullable', 'string', 'max:20'],
+            'soil_type' => ['nullable', 'string', 'in:Sandy,Silt,Loamy,Clay'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'is_demo' => ['nullable', 'boolean'],
         ];
     }
@@ -39,6 +42,9 @@ class StoreSoilSampleRequest extends FormRequest
             'ph.between' => 'Soil pH must be physically within the standard 0.00 to 14.00 range.',
             'temperature.between' => 'Soil temperature must be between -10°C and 60°C.',
             'ec.min' => 'Electrical conductivity cannot be a negative value.',
+            'soil_type.in' => 'Soil type must be one of: Sandy, Silt, Loamy, Clay.',
+            'latitude.between' => 'Latitude must be between -90 and 90 degrees.',
+            'longitude.between' => 'Longitude must be between -180 and 180 degrees.',
         ];
     }
 }

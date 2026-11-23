@@ -24,6 +24,9 @@ class SoilSampleSeeder extends Seeder
             [
                 'name' => 'South plot — bed 04',
                 'location' => 'Demo Plot A, Laguna',
+                'latitude' => 14.1699,
+                'longitude' => 121.2441,
+                'soil_type' => 'Loamy',
                 'collected_at' => Carbon::parse('2025-05-18 10:42:00'),
                 'testing_method' => 'prototype_sensor',
                 'source_type' => 'demo',
@@ -67,6 +70,9 @@ class SoilSampleSeeder extends Seeder
             [
                 'name' => 'North field sample',
                 'location' => 'North Field',
+                'latitude' => 14.1750,
+                'longitude' => 121.2480,
+                'soil_type' => 'Loamy',
                 'collected_at' => Carbon::parse('2025-05-15 14:18:00'),
                 'testing_method' => 'manual_entry',
                 'source_type' => 'manual',
@@ -100,6 +106,9 @@ class SoilSampleSeeder extends Seeder
             [
                 'name' => 'Greenhouse control',
                 'location' => 'Greenhouse 2',
+                'latitude' => 14.1650,
+                'longitude' => 121.2410,
+                'soil_type' => 'Loamy',
                 'collected_at' => Carbon::parse('2025-05-09 09:06:00'),
                 'testing_method' => 'prototype_sensor',
                 'source_type' => 'demo',
@@ -141,6 +150,9 @@ class SoilSampleSeeder extends Seeder
             [
                 'name' => 'Demo plot repeat',
                 'location' => 'Demo Plot B',
+                'latitude' => 14.1712,
+                'longitude' => 121.2465,
+                'soil_type' => 'Sandy',
                 'collected_at' => Carbon::parse('2025-05-03 16:22:00'),
                 'testing_method' => 'prototype_sensor',
                 'source_type' => 'demo',

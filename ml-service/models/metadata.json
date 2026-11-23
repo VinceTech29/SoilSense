@@ -1,0 +1,457 @@
+{
+  "model_version": "2.0.0",
+  "trained_at_utc": "2026-11-21T14:50:15.055931+00:00",
+  "random_state": 42,
+  "python_version": "3.12.16",
+  "sklearn_version": "1.9.1",
+  "xgboost_available": false,
+  "task": "fertilizer_classification_only",
+  "target": "Recommended_Fertilizer",
+  "selected_model": "GradientBoostingClassifier",
+  "selection_rationale": "Selected GradientBoostingClassifier among production-eligible string-native sklearn Pipelines (cv_accuracy=0.3162, cv_macro_f1=0.2031, train_cv_accuracy_gap=0.0200, train_cv_macro_f1_gap=0.0128; class_weight=None (preserves honest posterior probabilities instead of amplifying noise)). Matches the 6-feature synthetic Bayes ceiling (~0.3205) via pH threshold splits (pH < 5.5 -> Compost, pH > 7.8 -> Zinc Sulphate) and class priors with minimal train-vs-CV overfitting gap.",
+  "features": [
+    "Soil_pH",
+    "Electrical_Conductivity",
+    "Soil_Moisture",
+    "Temperature",
+    "Crop_Type",
+    "Soil_Type"
+  ],
+  "numeric_features": [
+    "Soil_pH",
+    "Electrical_Conductivity",
+    "Soil_Moisture",
+    "Temperature"
+  ],
+  "categorical_features": [
+    "Crop_Type",
+    "Soil_Type"
+  ],
+  "excluded_features": [
+    "Nitrogen_Level",
+    "Phosphorus_Level",
+    "Potassium_Level",
+    "Organic_Carbon",
+    "Humidity",
+    "Rainfall",
+    "Crop_Growth_Stage",
+    "Season",
+    "Irrigation_Type",
+    "Previous_Crop",
+    "Region",
+    "Fertilizer_Used_Last_Season",
+    "Yield_Last_Season"
+  ],
+  "classes": [
+    "Compost",
+    "DAP",
+    "MOP",
+    "NPK",
+    "SSP",
+    "Urea",
+    "Zinc Sulphate"
+  ],
+  "known_training_categories": {
+    "Crop_Type": [
+      "Cotton",
+      "Maize",
+      "Potato",
+      "Rice",
+      "Sugarcane",
+      "Tomato",
+      "Wheat"
+    ],
+    "Soil_Type": [
+      "Clay",
+      "Loamy",
+      "Sandy",
+      "Silt"
+    ]
+  },
+  "split": {
+    "strategy": "stratified_80_20_plus_5fold_stratified_cv",
+    "train_rows": 8000,
+    "test_rows": 2000,
+    "cv_folds": 5
+  },
+  "cleaning_summary": {
+    "rows_raw": 10000,
+    "exact_duplicates_dropped": 0,
+    "null_target_rows_dropped": 0,
+    "out_of_range_rows_dropped": 0,
+    "out_of_range_by_column": {},
+    "rows_cleaned": 10000,
+    "feature_null_counts_after_cleaning": {
+      "Soil_Type": 0,
+      "Soil_pH": 0,
+      "Soil_Moisture": 0,
+      "Organic_Carbon": 0,
+      "Electrical_Conductivity": 0,
+      "Nitrogen_Level": 0,
+      "Phosphorus_Level": 0,
+      "Potassium_Level": 0,
+      "Temperature": 0,
+      "Humidity": 0,
+      "Rainfall": 0,
+      "Crop_Type": 0,
+      "Crop_Growth_Stage": 0,
+      "Season": 0,
+      "Irrigation_Type": 0,
+      "Previous_Crop": 0,
+      "Region": 0,
+      "Fertilizer_Used_Last_Season": 0,
+      "Yield_Last_Season": 0
+    },
+    "agronomic_bounds_checked": {
+      "Soil_pH": [
+        0.0,
+        14.0
+      ],
+      "Soil_Moisture": [
+        0.0,
+        100.0
+      ],
+      "Electrical_Conductivity": [
+        0.0,
+        30.0
+      ],
+      "Temperature": [
+        -10.0,
+        60.0
+      ],
+      "Nitrogen_Level": [
+        0.0,
+        1000.0
+      ],
+      "Phosphorus_Level": [
+        0.0,
+        1000.0
+      ],
+      "Potassium_Level": [
+        0.0,
+        1000.0
+      ],
+      "Organic_Carbon": [
+        0.0,
+        100.0
+      ],
+      "Humidity": [
+        0.0,
+        100.0
+      ],
+      "Rainfall": [
+        0.0,
+        20000.0
+      ],
+      "Fertilizer_Used_Last_Season": [
+        0.0,
+        5000.0
+      ],
+      "Yield_Last_Season": [
+        0.0,
+        200.0
+      ]
+    }
+  },
+  "cv_comparison": [
+    {
+      "model_name": "LogisticRegression",
+      "class_weight": null,
+      "production_eligible": true,
+      "cv_accuracy_mean": 0.3024,
+      "cv_accuracy_std": 0.0083,
+      "cv_macro_f1_mean": 0.1824,
+      "cv_macro_f1_std": 0.0061,
+      "cv_weighted_f1_mean": 0.2534,
+      "cv_weighted_f1_std": 0.0062,
+      "train_fold_accuracy_mean": 0.3207,
+      "train_fold_macro_f1_mean": 0.1925,
+      "train_cv_accuracy_gap": 0.0183,
+      "train_cv_macro_f1_gap": 0.0101
+    },
+    {
+      "model_name": "LogisticRegression_balanced",
+      "class_weight": "balanced",
+      "production_eligible": true,
+      "cv_accuracy_mean": 0.1904,
+      "cv_accuracy_std": 0.0075,
+      "cv_macro_f1_mean": 0.1655,
+      "cv_macro_f1_std": 0.0058,
+      "cv_weighted_f1_mean": 0.1279,
+      "cv_weighted_f1_std": 0.0055,
+      "train_fold_accuracy_mean": 0.2013,
+      "train_fold_macro_f1_mean": 0.1788,
+      "train_cv_accuracy_gap": 0.011,
+      "train_cv_macro_f1_gap": 0.0133
+    },
+    {
+      "model_name": "RandomForestClassifier",
+      "class_weight": null,
+      "production_eligible": true,
+      "cv_accuracy_mean": 0.3051,
+      "cv_accuracy_std": 0.0068,
+      "cv_macro_f1_mean": 0.1783,
+      "cv_macro_f1_std": 0.0054,
+      "cv_weighted_f1_mean": 0.2625,
+      "cv_weighted_f1_std": 0.0058,
+      "train_fold_accuracy_mean": 0.7626,
+      "train_fold_macro_f1_mean": 0.5539,
+      "train_cv_accuracy_gap": 0.4575,
+      "train_cv_macro_f1_gap": 0.3756
+    },
+    {
+      "model_name": "RandomForestClassifier_balanced",
+      "class_weight": "balanced",
+      "production_eligible": true,
+      "cv_accuracy_mean": 0.2203,
+      "cv_accuracy_std": 0.0077,
+      "cv_macro_f1_mean": 0.2058,
+      "cv_macro_f1_std": 0.0084,
+      "cv_weighted_f1_mean": 0.1719,
+      "cv_weighted_f1_std": 0.0089,
+      "train_fold_accuracy_mean": 0.5124,
+      "train_fold_macro_f1_mean": 0.5188,
+      "train_cv_accuracy_gap": 0.2922,
+      "train_cv_macro_f1_gap": 0.313
+    },
+    {
+      "model_name": "GradientBoostingClassifier",
+      "class_weight": null,
+      "production_eligible": true,
+      "cv_accuracy_mean": 0.3162,
+      "cv_accuracy_std": 0.0087,
+      "cv_macro_f1_mean": 0.2031,
+      "cv_macro_f1_std": 0.0044,
+      "cv_weighted_f1_mean": 0.2528,
+      "cv_weighted_f1_std": 0.0067,
+      "train_fold_accuracy_mean": 0.3362,
+      "train_fold_macro_f1_mean": 0.2159,
+      "train_cv_accuracy_gap": 0.02,
+      "train_cv_macro_f1_gap": 0.0128
+    }
+  ],
+  "test_metrics": {
+    "accuracy": 0.3235,
+    "macro_f1": 0.2113,
+    "weighted_f1": 0.2624,
+    "full_train_accuracy": 0.3334,
+    "full_train_minus_test_accuracy": 0.0099,
+    "train_cv_accuracy_gap": 0.02,
+    "train_cv_macro_f1_gap": 0.0128,
+    "per_class": {
+      "Compost": {
+        "precision": 0.3035,
+        "recall": 0.6482,
+        "f1-score": 0.4135,
+        "support": 199
+      },
+      "DAP": {
+        "precision": 0.3394,
+        "recall": 0.1592,
+        "f1-score": 0.2168,
+        "support": 584
+      },
+      "MOP": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 282
+      },
+      "NPK": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 128
+      },
+      "SSP": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 37
+      },
+      "Urea": {
+        "precision": 0.3202,
+        "recall": 0.5371,
+        "f1-score": 0.4012,
+        "support": 620
+      },
+      "Zinc Sulphate": {
+        "precision": 0.3525,
+        "recall": 0.6133,
+        "f1-score": 0.4477,
+        "support": 150
+      }
+    },
+    "confusion_matrix_labels": [
+      "Compost",
+      "DAP",
+      "MOP",
+      "NPK",
+      "SSP",
+      "Urea",
+      "Zinc Sulphate"
+    ],
+    "confusion_matrix": [
+      [
+        129,
+        9,
+        0,
+        0,
+        0,
+        61,
+        0
+      ],
+      [
+        120,
+        93,
+        0,
+        0,
+        0,
+        303,
+        68
+      ],
+      [
+        48,
+        44,
+        0,
+        0,
+        0,
+        168,
+        22
+      ],
+      [
+        0,
+        30,
+        0,
+        0,
+        0,
+        98,
+        0
+      ],
+      [
+        0,
+        7,
+        0,
+        0,
+        0,
+        30,
+        0
+      ],
+      [
+        128,
+        80,
+        0,
+        0,
+        0,
+        333,
+        79
+      ],
+      [
+        0,
+        11,
+        0,
+        0,
+        0,
+        47,
+        92
+      ]
+    ]
+  },
+  "feature_importances": {
+    "native_aggregated_importance": {
+      "Soil_pH": 0.9312,
+      "Soil_Moisture": 0.028,
+      "Temperature": 0.0274,
+      "Electrical_Conductivity": 0.0094,
+      "Soil_Type": 0.0023,
+      "Crop_Type": 0.0016
+    },
+    "test_permutation_importance_accuracy": {
+      "Soil_pH": 0.0868,
+      "Temperature": 0.0026,
+      "Electrical_Conductivity": 0.0021,
+      "Crop_Type": 0.0003,
+      "Soil_Type": 0.0,
+      "Soil_Moisture": -0.0039
+    }
+  },
+  "ablation_6_vs_19": {
+    "estimator": "GradientBoostingClassifier",
+    "features_19_count": 19,
+    "features_6_count": 6,
+    "excluded_features": [
+      "Nitrogen_Level",
+      "Phosphorus_Level",
+      "Potassium_Level",
+      "Organic_Carbon",
+      "Humidity",
+      "Rainfall",
+      "Crop_Growth_Stage",
+      "Season",
+      "Irrigation_Type",
+      "Previous_Crop",
+      "Region",
+      "Fertilizer_Used_Last_Season",
+      "Yield_Last_Season"
+    ],
+    "ablation_skipped": false,
+    "cv_19_features": {
+      "cv_accuracy_mean": 0.8851,
+      "cv_accuracy_std": 0.0064,
+      "cv_macro_f1_mean": 0.7488,
+      "cv_weighted_f1_mean": 0.8946
+    },
+    "note": "Omitting Nitrogen_Level, Phosphorus_Level, and Potassium_Level (which drive 68.38% of the synthetic CSV's deterministic cascade) plus Crop_Growth_Stage (4.53%) causes CV accuracy to drop sharply from ~88.5% (19 features) to ~31.6% (6 features, matching the 32.05% 6-feature Bayes ceiling). Without N-P-K, only the Soil_pH thresholds (<5.5 -> Compost, >7.8 -> Zinc Sulphate) and overall class priors carry signal in this synthetic CSV.",
+    "cv_6_features": {
+      "cv_accuracy_mean": 0.3162,
+      "cv_accuracy_std": 0.0087,
+      "cv_macro_f1_mean": 0.2031,
+      "cv_weighted_f1_mean": 0.2528
+    }
+  },
+  "leakage_and_imbalance": {
+    "train_test_exact_6feature_overlap": 0,
+    "leakage_assessment": "Zero exact feature-vector overlap between train and test splits; preprocessing (median imputer, StandardScaler, OneHotEncoder) is encapsulated inside sklearn Pipeline and fitted strictly within each CV fold and on train split only. Historical columns (Fertilizer_Used_Last_Season, Yield_Last_Season) and unavailable N-P-K columns are excluded.",
+    "class_distribution": {
+      "Urea": {
+        "count": 3101,
+        "share_pct": 31.01
+      },
+      "DAP": {
+        "count": 2920,
+        "share_pct": 29.2
+      },
+      "MOP": {
+        "count": 1408,
+        "share_pct": 14.08
+      },
+      "Compost": {
+        "count": 996,
+        "share_pct": 9.96
+      },
+      "Zinc Sulphate": {
+        "count": 752,
+        "share_pct": 7.52
+      },
+      "NPK": {
+        "count": 641,
+        "share_pct": 6.41
+      },
+      "SSP": {
+        "count": 182,
+        "share_pct": 1.82
+      }
+    },
+    "majority_to_minority_ratio": 17.04,
+    "imbalance_assessment": "Target shows 17.04:1 class imbalance (majority Urea 31.01% vs minority SSP 1.82%). Without N, P, K, and Crop_Growth_Stage, Urea, DAP, MOP, NPK, and SSP are indistinguishable except through neutral-pH priors (only Compost at pH < 5.5 and Zinc Sulphate at pH > 7.8 have direct 4-sensor signal). Applying class_weight='balanced' collapses overall accuracy (~19-22%) by over-predicting noise-dominated minority classes."
+  },
+  "synthetic_dataset_notes": {
+    "is_synthetic": true,
+    "generation_mechanism": "100% synthetic dataset with independent uniform features (max pairwise |r| < 0.03). 8,642/10,000 rows (86.42%) follow an exact 6-rule deterministic cascade: (1) N < 60 -> Urea (2,902 rows, 29.02%); (2) P < 40 -> DAP (2,738 rows, 27.38%); (3) K < 40 -> MOP (1,198 rows, 11.98%) \u2014 together N, P, and K drive 6,838/10,000 rows (68.38%); (4) pH < 5.5 -> Compost (798 rows, 7.98%); (5) pH > 7.8 -> Zinc Sulphate (553 rows, 5.53%); (6) Crop_Growth_Stage == 'Vegetative' -> NPK (453 rows, 4.53%). The remaining 1,358 rows (13.58%) are sampled approximately uniformly across all 7 classes.",
+    "npk_rule_share": 0.6838,
+    "bayes_ceiling_19_features": 0.8852,
+    "bayes_ceiling_6_features": 0.3205,
+    "accuracy_caveat": "SoilSense collects 4 soil sensors (Soil_pH, Electrical_Conductivity, Soil_Moisture, Temperature) plus Crop_Type and Soil_Type \u2014 Nitrogen, Phosphorus, and Potassium are NOT measured or supplied. Removing N, P, and K drops the first three cascade rules that drove 68.38% of labels in this synthetic CSV, collapsing the theoretical Bayes-optimal accuracy ceiling from ~88.52% (19 features) to ~32.05% (6 features). On this synthetic dataset, the 6-feature model primarily learns the pH rules (pH < 5.5 -> Compost at ~31.8% posterior; pH > 7.8 -> Zinc Sulphate at ~31.6% posterior) plus the neutral-pH majority class prior (Urea at ~32.3% posterior for 5.5 <= pH <= 7.8). Because top-class probabilities stay around 0.30-0.34 (below the default 0.55 low_confidence threshold), low_confidence=true flags these predictions honestly so downstream deterministic agronomic guidance can assist. Do NOT overstate accuracy; replace this synthetic dataset with real 4-sensor regional field-trial data whenever available.",
+    "excluded_feature_rationale": "13 columns (Nitrogen_Level, Phosphorus_Level, Potassium_Level, Organic_Carbon, Humidity, Rainfall, Crop_Growth_Stage, Season, Irrigation_Type, Previous_Crop, Region, Fertilizer_Used_Last_Season, Yield_Last_Season) are excluded from the production 6-feature pipeline because SoilSense ESP32 hardware and soil sample workflows only supply 4 soil sensors (pH, EC, moisture, temperature) plus crop type and soil type. Excluding unavailable fields ensures production inference never fabricates missing N-P-K or lab values."
+  }
+}

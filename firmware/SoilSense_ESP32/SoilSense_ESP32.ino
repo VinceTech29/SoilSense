@@ -4,14 +4,12 @@
  * ESP32 Hardware Firmware Sketch
  * ==============================================================================
  * Compatible Boards: ESP32 DevKit V1 (30-pin / 38-pin), NodeMCU-32S, ESP32-WROOM-32
- * 
  * Hardware Sensors & Modules Supported:
  * 1. Soil pH Sensor (Analog, e.g. DFRobot Gravity SEN0161 or pH-4502C) -> GPIO 34 (ADC1_CH6)
  * 2. Capacitive Soil Moisture Sensor v1.2 / v2.0 -> GPIO 35 (ADC1_CH7)
  * 3. DS18B20 Waterproof Temperature Sensor (OneWire) -> GPIO 4 (with 4.7k pullup)
  * 4. Electrical Conductivity (EC) Sensor (Analog, optional) -> GPIO 32 (ADC1_CH4)
  * 5. 16x2 / 20x4 I2C LCD Display Module (PCF8574) -> SDA: GPIO 21, SCL: GPIO 22
- * 
  * Communication Protocol:
  * HTTP POST application/json with Bearer Token Authentication to Laravel Backend
  * ==============================================================================
@@ -90,7 +88,7 @@ float readSoilPH() {
     float rawAdc = (float)adcSum / SAMPLES;
     float voltage = (rawAdc / 4095.0) * 3.3; // ESP32 12-bit ADC (0-4095)
     float ph = (PH_SLOPE * voltage) + PH_OFFSET;
-    
+
     // Physical boundary safety clamps
     if (ph < 0.0) ph = 0.0;
     if (ph > 14.0) ph = 14.0;
@@ -106,7 +104,7 @@ float readSoilMoisturePercent() {
         delay(10);
     }
     float rawAdc = (float)adcSum / SAMPLES;
-    
+
     // Map raw ADC to 0-100% volumetric moisture
     float moisture = ((float)(AIR_VALUE - rawAdc) / (float)(AIR_VALUE - WATER_VALUE)) * 100.0;
     if (moisture < 0.0) moisture = 0.0;
@@ -118,7 +116,7 @@ float readSoilMoisturePercent() {
 float readSoilTemperature() {
     tempSensor.requestTemperatures();
     float tempC = tempSensor.getTempCByIndex(0);
-    
+
     // If sensor disconnected or bus fault (-127°C)
     if (tempC == DEVICE_DISCONNECTED_C || tempC < -50.0 || tempC > 85.0) {
         Serial.println(F("[WARN] DS18B20 temperature probe disconnected or faulty."));
@@ -137,11 +135,11 @@ float readSoilEC(float tempC) {
     }
     float rawAdc = (float)adcSum / SAMPLES;
     float voltage = (rawAdc / 4095.0) * 3.3;
-    
+
     // Estimate EC in mS/cm with temperature compensation to 25°C baseline
     float tempCompensation = 1.0 + 0.019 * (tempC > 0 ? tempC - 25.0 : 0.0);
     float ec = (voltage * 1.5) / tempCompensation;
-    
+
     if (ec < 0.0) ec = 0.0;
     if (ec > 20.0) ec = 20.0;
     return ec;
@@ -204,36 +202,36 @@ void sendTelemetry(float ph, float moisture, float tempC, float ec) {
     http.begin(SERVER_URL);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("Accept", "application/json");
-    
+
     // Set Authorization header
     String authHeader = String("Bearer ") + API_TOKEN;
     http.addHeader("Authorization", authHeader);
 
-    // Build JSON payload (missing readings sent as null)
+    // Build 4-sensor JSON payload (missing readings sent as null)
     String jsonPayload = "{";
     jsonPayload += "\"sample_id\":\"" + String(SAMPLE_ID) + "\",";
     jsonPayload += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
-    
+
     // pH
     jsonPayload += "\"ph\":" + String(ph, 2) + ",";
-    
+
     // Moisture
     jsonPayload += "\"moisture_percent\":" + String(moisture, 1) + ",";
-    
+
     // Temperature (null if probe disconnected)
     if (tempC > -50.0) {
         jsonPayload += "\"temperature_c\":" + String(tempC, 1) + ",";
     } else {
         jsonPayload += "\"temperature_c\":null,";
     }
-    
+
     // EC (set to null if EC sensor not installed or reading is baseline 0)
     if (ec > 0.05) {
         jsonPayload += "\"ec_ms_cm\":" + String(ec, 2);
     } else {
         jsonPayload += "\"ec_ms_cm\":null";
     }
-    
+
     jsonPayload += "}";
 
     Serial.println(F("=================================================="));

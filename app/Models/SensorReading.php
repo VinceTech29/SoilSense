@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SensorReading extends Model
 {
@@ -46,6 +48,16 @@ class SensorReading extends Model
     public function device(): BelongsTo
     {
         return $this->belongsTo(IotDevice::class, 'device_id');
+    }
+
+    public function fertilizerRecommendations(): HasMany
+    {
+        return $this->hasMany(FertilizerRecommendation::class, 'reading_id');
+    }
+
+    public function latestFertilizerRecommendation(): HasOne
+    {
+        return $this->hasOne(FertilizerRecommendation::class, 'reading_id')->latestOfMany();
     }
 
     public function scopeValid($query)

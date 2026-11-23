@@ -18,6 +18,9 @@ class SoilSample extends Model
         'sample_code',
         'name',
         'location',
+        'latitude',
+        'longitude',
+        'soil_type',
         'collected_at',
         'testing_method',
         'source_type',
@@ -29,6 +32,8 @@ class SoilSample extends Model
     ];
 
     protected $casts = [
+        'latitude' => 'float',
+        'longitude' => 'float',
         'collected_at' => 'datetime',
     ];
 

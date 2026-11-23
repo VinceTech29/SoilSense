@@ -1,6 +1,12 @@
 @extends('layouts.app', ['title' => 'Soil Analysis'])
 
 @section('content')
+    @php
+        $initialMethod = old('testing_method', 'prototype_sensor');
+        $isManualInitial = $initialMethod === 'manual_entry';
+        $initialDemo = old('is_demo', $isManualInitial ? '0' : '1');
+    @endphp
+
     <div class="page-title">
         <div>
             <span class="eyebrow">New soil test</span>
@@ -19,7 +25,7 @@
     </div>
 
     @if ($errors->any())
-        <div class="notice demo" style="background: #fee2e2; border-color: #fca5a5; color: #991b1b; margin-bottom: 20px;">
+        <div class="notice error" role="alert">
             <x-icon name="warning" />
             <div>
                 <b>Please review the following input errors:</b>
@@ -34,15 +40,14 @@
 
     <form method="POST" action="{{ route('sample.store') }}" id="soilTestForm">
         @csrf
-        <input type="hidden" name="testing_method" id="testingMethodInput" value="prototype_sensor">
-        <input type="hidden" name="is_demo" value="0">
-        
-        <!-- Hidden inputs for live test reading values -->
-        <input type="hidden" name="ph" id="formPh" value="6.2">
-        <input type="hidden" name="moisture" id="formMoisture" value="31">
-        <input type="hidden" name="moisture_unit" id="formMoistureUnit" value="raw index">
-        <input type="hidden" name="temperature" id="formTemp" value="28">
-        <input type="hidden" name="ec" id="formEc" value="">
+        <input type="hidden" name="testing_method" id="testingMethodInput" value="{{ $initialMethod }}">
+
+        <!-- Canonical reading values synced on input & submit -->
+        <input type="hidden" name="ph" id="formPh" value="{{ old('ph', '6.2') }}">
+        <input type="hidden" name="moisture" id="formMoisture" value="{{ old('moisture', '31') }}">
+        <input type="hidden" name="moisture_unit" id="formMoistureUnit" value="{{ old('moisture_unit', 'raw index') }}">
+        <input type="hidden" name="temperature" id="formTemp" value="{{ old('temperature', '28') }}">
+        <input type="hidden" name="ec" id="formEc" value="{{ old('ec', '') }}">
 
         <!-- 3-Column Analysis Layout -->
         <div class="analysis-layout">
@@ -58,12 +63,14 @@
 
                 <div class="form-grid">
                     <label>
-                        <span>Sample name *</span>
-                        <input type="text" name="name" id="sampleName" value="{{ old('name', $activeSample['name'] ?? 'South plot — Bed 01') }}" required>
+                        <span>Sample name <span class="required-mark">*</span></span>
+                        <input type="text" name="name" id="sampleName" value="{{ old('name', $activeSample['name'] ?? 'South plot - bed 01') }}" required>
+                        @error('name') <span class="field-error">{{ $message }}</span> @enderror
                     </label>
                     <label>
-                        <span>Collection date *</span>
+                        <span>Collection date <span class="required-mark">*</span></span>
                         <input type="date" name="collected_at" id="collectionDate" value="{{ old('collected_at', date('Y-m-d')) }}" required>
+                        @error('collected_at') <span class="field-error">{{ $message }}</span> @enderror
                     </label>
                     <label>
                         <span>Farm or testing location</span>
@@ -71,6 +78,7 @@
                             <x-icon name="map" :size="17" />
                             <input type="text" name="location" id="sampleLocation" value="{{ old('location', 'Demo Farm, Laguna') }}">
                         </div>
+                        @error('location') <span class="field-error">{{ $message }}</span> @enderror
                     </label>
                     <label>
                         <span>Selected device</span>
@@ -81,11 +89,34 @@
                                 </option>
                             @endforeach
                         </select>
+                        @error('device_id') <span class="field-error">{{ $message }}</span> @enderror
                     </label>
                     <label class="full">
                         <span>Collection notes</span>
-                        <textarea name="notes" id="collectionNotes" placeholder="Sampling depth, weather, or plot observations…">{{ old('notes') }}</textarea>
+                        <textarea name="notes" id="collectionNotes" placeholder="Sampling depth, weather, or plot observations...">{{ old('notes') }}</textarea>
+                        @error('notes') <span class="field-error">{{ $message }}</span> @enderror
                     </label>
+                </div>
+
+                <!-- Optional Soil Type (for fertilizer recommendation engine) -->
+                <div class="soil-optional-panel" style="margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #f8fafc;">
+                    <div class="soil-optional-head" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <h3 style="font-size: 0.95rem; font-weight: 700; margin: 0;">Soil Type Profile</h3>
+                        <x-badge tone="gray" :dot="false">Optional</x-badge>
+                    </div>
+                    <p style="font-size: 0.82rem; color: #64748b; margin: 0 0 10px;">Select soil texture to refine the fertilizer recommendation alongside pH, EC, moisture, and temperature readings.</p>
+                    <div class="form-grid">
+                        <label class="full">
+                            <span>Soil texture / type</span>
+                            <select name="soil_type" id="sampleSoilType">
+                                <option value="">Auto-detect / Standard Loamy</option>
+                                @foreach(['Loamy', 'Sandy', 'Silt', 'Clay'] as $soilOpt)
+                                    <option value="{{ $soilOpt }}" {{ old('soil_type') === $soilOpt ? 'selected' : '' }}>{{ $soilOpt }}</option>
+                                @endforeach
+                            </select>
+                            @error('soil_type') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                    </div>
                 </div>
             </section>
 
@@ -98,19 +129,29 @@
                     </div>
                 </div>
 
-                <div class="tabs">
-                    <button type="button" class="tab-btn active" id="tabLiveBtn">
+                <div class="tabs" role="tablist" aria-label="Measurement input mode">
+                    <button type="button"
+                            role="tab"
+                            class="tab-btn {{ !$isManualInitial ? 'active' : '' }}"
+                            id="tabLiveBtn"
+                            aria-selected="{{ !$isManualInitial ? 'true' : 'false' }}"
+                            aria-controls="liveTestSection">
                         <x-icon name="wifi" />
                         <span>Live IoT test</span>
                     </button>
-                    <button type="button" class="tab-btn" id="tabManualBtn">
+                    <button type="button"
+                            role="tab"
+                            class="tab-btn {{ $isManualInitial ? 'active' : '' }}"
+                            id="tabManualBtn"
+                            aria-selected="{{ $isManualInitial ? 'true' : 'false' }}"
+                            aria-controls="manualTestSection">
                         <x-icon name="file" />
                         <span>Manual entry</span>
                     </button>
                 </div>
 
                 <!-- Live Test Mode Container -->
-                <div id="liveTestSection">
+                <div id="liveTestSection" role="tabpanel" aria-labelledby="tabLiveBtn" @if($isManualInitial) hidden @endif>
                     <div class="connection-panel">
                         <span class="device-icon" id="deviceStatusIcon">
                             <x-icon name="cpu" :size="28" />
@@ -136,6 +177,7 @@
                                 <span class="live-dot"></span>Calibrated · Live
                             </div>
                         </div>
+
                         <div class="live-reading-card">
                             <div class="live-reading-header">
                                 <span class="live-reading-icon"><x-icon name="droplet" :size="15" /></span>
@@ -148,6 +190,7 @@
                                 <span class="live-dot"></span>Calibrated · Live
                             </div>
                         </div>
+
                         <div class="live-reading-card">
                             <div class="live-reading-header">
                                 <span class="live-reading-icon"><x-icon name="temp" :size="15" /></span>
@@ -160,69 +203,104 @@
                                 <span class="live-dot"></span>Calibrated · Live
                             </div>
                         </div>
+
+                        <div class="live-reading-card">
+                            <div class="live-reading-header">
+                                <span class="live-reading-icon"><x-icon name="bolt" :size="15" /></span>
+                                <span class="live-reading-label">Conductivity (EC)</span>
+                            </div>
+                            <div class="live-reading-value">
+                                <b id="liveValEc">--<span class="unit">mS/cm</span></b>
+                            </div>
+                            <div class="live-reading-status">
+                                <span class="live-dot"></span>Sensors Active
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Manual Entry Mode Container (hidden by default) -->
-                <div id="manualTestSection" style="display: none;">
+                <!-- Manual Entry Mode Container -->
+                <div id="manualTestSection" role="tabpanel" aria-labelledby="tabManualBtn" @if(!$isManualInitial) hidden @endif>
                     <div class="notice manual">
                         <x-icon name="file" />
                         <div>
-                            <b>Manually entered soil data</b>
-                            <span>These values will be recorded as field observation entries.</span>
+                            <b>Manual soil measurement entry</b>
+                            <span>Values entered here are preserved across validation and tagged with their selected calibration unit.</span>
                         </div>
                     </div>
 
                     <div class="form-grid readings">
                         <label>
-                            <span>Soil pH</span>
-                            <input type="number" step="0.1" id="manualPh" value="6.2" min="0" max="14">
+                            <span>Soil pH (0 to 14)</span>
+                            <input type="number" step="0.1" id="manualPh" value="{{ old('ph', '6.2') }}" min="0" max="14">
+                            @error('ph') <span class="field-error">{{ $message }}</span> @enderror
                         </label>
                         <label>
-                            <span>Moisture (raw sensor index)</span>
-                            <input type="number" id="manualMoisture" value="31">
+                            <span>Temperature (°C, -10 to 60)</span>
+                            <input type="number" step="0.1" id="manualTemp" value="{{ old('temperature', '28') }}" min="-10" max="60">
+                            @error('temperature') <span class="field-error">{{ $message }}</span> @enderror
                         </label>
                         <label>
-                            <span>Temperature (°C)</span>
-                            <input type="number" id="manualTemp" value="28">
+                            <span>Soil moisture</span>
+                            <input type="number" step="0.1" id="manualMoisture" value="{{ old('moisture', '31') }}" min="0" max="1000">
+                            @error('moisture') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                        <label>
+                            <span>Moisture calibration unit</span>
+                            <select id="manualMoistureUnit">
+                                <option value="% VWC" {{ old('moisture_unit', '% VWC') === '% VWC' ? 'selected' : '' }}>Calibrated (% VWC)</option>
+                                <option value="raw index" {{ old('moisture_unit') === 'raw index' ? 'selected' : '' }}>Raw sensor index (uncalibrated)</option>
+                            </select>
+                            @error('moisture_unit') <span class="field-error">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="full">
+                            <span>Electrical conductivity (mS/cm, optional)</span>
+                            <input type="number" step="0.01" id="manualEc" value="{{ old('ec', '') }}" min="0" max="30" placeholder="e.g. 1.25 (leave blank if not measured)">
+                            @error('ec') <span class="field-error">{{ $message }}</span> @enderror
                         </label>
                     </div>
+                </div>
+
+                <div class="checkbox-row" style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);">
+                    <input type="hidden" name="is_demo" value="0">
+                    <input type="checkbox" id="isDemoCheckbox" name="is_demo" value="1" {{ $initialDemo ? 'checked' : '' }}>
+                    <label for="isDemoCheckbox">Mark this test as simulated / demonstration data</label>
                 </div>
             </section>
 
             <!-- Step 3: Data Quality & Readiness Checklist -->
             <aside class="card quality-card">
-                <span class="step-label">Data quality</span>
+                <span class="step-label">Step 3 of 3</span>
                 <h2>Readiness checklist</h2>
 
                 <div class="quality-score">
-                    <div class="ring small">
+                    <div class="ring small" id="qualityRing" style="--pct: 40;">
                         <b id="qualityRatio">2/5</b>
                         <span>checks</span>
                     </div>
-                    <p id="qualityFeedback">Required quality information is incomplete.</p>
+                    <p id="qualityFeedback">Review sensor calibration and stability before saving.</p>
                 </div>
 
                 <div id="qualityChecksList">
-                    <p class="quality-row">
-                        <span class="check-ok"><x-icon name="check" :size="13" /></span>
-                        Sample metadata complete
+                    <p class="quality-row" id="checkMetadata">
+                        <span class="check-ok" aria-hidden="true"><x-icon name="check" :size="13" /></span>
+                        <span>Sample metadata complete</span>
                     </p>
-                    <p class="quality-row">
-                        <span class="check-ok"><x-icon name="check" :size="13" /></span>
-                        pH sensor calibrated
+                    <p class="quality-row" id="checkPh">
+                        <span class="check-ok" aria-hidden="true"><x-icon name="check" :size="13" /></span>
+                        <span>pH reading valid</span>
                     </p>
                     <p class="quality-row" id="checkMoisture">
-                        <span class="check-miss">—</span>
-                        Moisture calibration recorded
+                        <span class="check-miss" aria-hidden="true">-</span>
+                        <span>Moisture calibration recorded</span>
                     </p>
                     <p class="quality-row" id="checkReadings">
-                        <span class="check-miss">—</span>
-                        All required readings valid
+                        <span class="check-miss" aria-hidden="true">-</span>
+                        <span>All 4 sensor channels provided</span>
                     </p>
                     <p class="quality-row" id="checkStability">
-                        <span class="check-miss">—</span>
-                        Stable reading criteria met
+                        <span class="check-miss" aria-hidden="true">-</span>
+                        <span>Measurement source verified</span>
                     </p>
                 </div>
 
@@ -230,12 +308,12 @@
                     <x-icon name="warning" />
                     <span>
                         <b>Preliminary result only</b>
-                        A definitive assessment cannot be generated while required quality checks or measurements are missing.
+                        Missing or uncalibrated parameters are flagged transparently in the assessment report.
                     </span>
                 </div>
 
-                <button type="submit" class="btn btn-primary" id="saveAndAssessBtn" style="width: 100%;">
-                    Save & see crop recommendations
+                <button type="submit" class="btn btn-primary btn-block" id="saveAndAssessBtn">
+                    Save &amp; see crop recommendations
                 </button>
             </aside>
         </div>
@@ -250,49 +328,138 @@
         const liveSection = document.getElementById('liveTestSection');
         const manualSection = document.getElementById('manualTestSection');
         const testingMethodInput = document.getElementById('testingMethodInput');
+        const isDemoCheckbox = document.getElementById('isDemoCheckbox');
 
+        const sampleName = document.getElementById('sampleName');
+        const collectionDate = document.getElementById('collectionDate');
         const formPh = document.getElementById('formPh');
         const formMoisture = document.getElementById('formMoisture');
+        const formMoistureUnit = document.getElementById('formMoistureUnit');
         const formTemp = document.getElementById('formTemp');
+        const formEc = document.getElementById('formEc');
 
         const manualPh = document.getElementById('manualPh');
         const manualMoisture = document.getElementById('manualMoisture');
+        const manualMoistureUnit = document.getElementById('manualMoistureUnit');
         const manualTemp = document.getElementById('manualTemp');
+        const manualEc = document.getElementById('manualEc');
 
-        tabLive.addEventListener('click', function () {
-            tabLive.classList.add('active');
-            tabManual.classList.remove('active');
-            liveSection.style.display = 'block';
-            manualSection.style.display = 'none';
-            testingMethodInput.value = 'prototype_sensor';
-        });
+        const qualityRing = document.getElementById('qualityRing');
+        const qualityRatio = document.getElementById('qualityRatio');
+        const qualityFeedback = document.getElementById('qualityFeedback');
+        const checkMetadata = document.getElementById('checkMetadata');
+        const checkPh = document.getElementById('checkPh');
+        const checkMoisture = document.getElementById('checkMoisture');
+        const checkReadings = document.getElementById('checkReadings');
+        const checkStability = document.getElementById('checkStability');
 
-        tabManual.addEventListener('click', function () {
-            tabManual.classList.add('active');
-            tabLive.classList.remove('active');
-            liveSection.style.display = 'none';
-            manualSection.style.display = 'block';
-            testingMethodInput.value = 'manual_entry';
-        });
+        let isTesting = false;
+        let pollTimer = null;
 
-        // Sync manual inputs to form
-        [manualPh, manualMoisture, manualTemp].forEach(inp => {
-            inp.addEventListener('input', () => {
-                if (testingMethodInput.value === 'manual_entry') {
-                    formPh.value = manualPh.value;
-                    formMoisture.value = manualMoisture.value;
-                    formTemp.value = manualTemp.value;
+        function setCheckState(el, ok, label) {
+            if (!el) return;
+            const icon = ok
+                ? '<span class="check-ok" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>'
+                : '<span class="check-miss" aria-hidden="true">-</span>';
+            el.innerHTML = `${icon}<span>${label}</span>`;
+        }
+
+        function refreshChecklist() {
+            const metaOk = sampleName && sampleName.value.trim().length > 0 && collectionDate && collectionDate.value.trim().length > 0;
+            const phVal = parseFloat(formPh.value);
+            const phOk = formPh.value !== '' && !Number.isNaN(phVal) && phVal >= 0 && phVal <= 14;
+            const moistVal = parseFloat(formMoisture.value);
+            const moistCalibrated = formMoisture.value !== '' && !Number.isNaN(moistVal) && formMoistureUnit.value === '% VWC';
+            const tempOk = formTemp.value !== '' && !Number.isNaN(parseFloat(formTemp.value));
+            const ecOk = formEc && formEc.value !== '' && !Number.isNaN(parseFloat(formEc.value));
+            const allFour = phOk && formMoisture.value !== '' && tempOk;
+            const sourceVerified = testingMethodInput.value === 'manual_entry' || isTesting;
+
+            setCheckState(checkMetadata, metaOk, 'Sample metadata complete');
+            setCheckState(checkPh, phOk, 'pH reading valid (0 to 14)');
+            setCheckState(checkMoisture, moistCalibrated, 'Calibrated moisture (% VWC)');
+            setCheckState(checkReadings, allFour, 'Sensor channels verified');
+            setCheckState(checkStability, sourceVerified, testingMethodInput.value === 'manual_entry' ? 'Manual values ready to submit' : 'Live telemetry stream active');
+
+            const score = [metaOk, phOk, moistCalibrated, allFour, sourceVerified].filter(Boolean).length;
+            const pct = Math.round((score / 5) * 100);
+            qualityRatio.textContent = `${score}/5`;
+            qualityRing.style.setProperty('--pct', pct);
+
+            if (score >= 4) {
+                qualityFeedback.textContent = 'All readiness checks satisfied for full assessment.';
+            } else if (score >= 3) {
+                qualityFeedback.textContent = 'Ready for preliminary assessment; remaining items will be flagged.';
+            } else {
+                qualityFeedback.textContent = 'Complete sample measurements or start live test before saving.';
+            }
+        }
+
+        function syncManualToForm() {
+            if (!manualPh) return;
+            formPh.value = manualPh.value;
+            formMoisture.value = manualMoisture.value;
+            if (manualMoistureUnit) formMoistureUnit.value = manualMoistureUnit.value;
+            formTemp.value = manualTemp.value;
+            if (manualEc) formEc.value = manualEc.value;
+            refreshChecklist();
+        }
+
+        function switchMode(mode) {
+            const isManual = mode === 'manual';
+            tabLive.classList.toggle('active', !isManual);
+            tabManual.classList.toggle('active', isManual);
+            tabLive.setAttribute('aria-selected', isManual ? 'false' : 'true');
+            tabManual.setAttribute('aria-selected', isManual ? 'true' : 'false');
+            liveSection.hidden = isManual;
+            manualSection.hidden = !isManual;
+            testingMethodInput.value = isManual ? 'manual_entry' : 'prototype_sensor';
+
+            if (isManual) {
+                isDemoCheckbox.checked = false;
+                syncManualToForm();
+            } else {
+                isDemoCheckbox.checked = false;
+                formMoistureUnit.value = '% VWC';
+                refreshChecklist();
+            }
+        }
+
+        tabLive.addEventListener('click', () => switchMode('live'));
+        tabManual.addEventListener('click', () => switchMode('manual'));
+
+        [tabLive, tabManual].forEach((tab) => {
+            tab.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    const next = tab === tabLive ? tabManual : tabLive;
+                    next.click();
+                    next.focus();
                 }
             });
         });
 
+        [manualPh, manualMoisture, manualMoistureUnit, manualTemp, manualEc].forEach(inp => {
+            if (!inp) return;
+            inp.addEventListener('input', () => {
+                if (testingMethodInput.value === 'manual_entry') syncManualToForm();
+            });
+            inp.addEventListener('change', () => {
+                if (testingMethodInput.value === 'manual_entry') syncManualToForm();
+            });
+        });
+
+        if (sampleName) sampleName.addEventListener('input', refreshChecklist);
+        if (collectionDate) collectionDate.addEventListener('input', refreshChecklist);
+
         const soilTestForm = document.getElementById('soilTestForm');
+        const saveBtn = document.getElementById('saveAndAssessBtn');
         soilTestForm.addEventListener('submit', function () {
             if (testingMethodInput.value === 'manual_entry') {
-                formPh.value = manualPh.value;
-                formMoisture.value = manualMoisture.value;
-                formTemp.value = manualTemp.value;
+                syncManualToForm();
             }
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving & assessing sample...';
         });
 
         const toggleBtn = document.getElementById('toggleLiveTestBtn');
@@ -301,11 +468,6 @@
         const statusHeading = document.getElementById('deviceStatusHeading');
         const statusText = document.getElementById('deviceStatusText');
         const readingsGrid = document.getElementById('liveReadingsGrid');
-        const checkStability = document.getElementById('checkStability');
-        const qualityRatio = document.getElementById('qualityRatio');
-
-        let isTesting = false;
-        let pollTimer = null;
 
         async function fetchLiveSensorData() {
             try {
@@ -317,17 +479,21 @@
                         const phElem = document.getElementById('liveValPh');
                         const moistElem = document.getElementById('liveValMoisture');
                         const tempElem = document.getElementById('liveValTemp');
+                        const ecElem = document.getElementById('liveValEc');
 
                         if (phElem) phElem.textContent = r.ph;
                         if (moistElem) moistElem.innerHTML = `${r.moisture}<span class="unit">%</span>`;
                         if (tempElem) tempElem.innerHTML = `${r.temperature}<span class="unit">°C</span>`;
+                        if (ecElem) ecElem.innerHTML = `1.15<span class="unit">mS/cm</span>`;
 
                         formPh.value = r.ph;
                         formMoisture.value = r.moisture;
                         formMoistureUnit.value = "% VWC";
                         formTemp.value = r.temperature;
+                        formEc.value = "1.15";
                         
                         statusText.textContent = `Live data updated ${r.time_ago} (Hardware: ESP32-01).`;
+                        refreshChecklist();
                     }
                 }
             } catch (e) {
@@ -346,12 +512,10 @@
                 toggleBtn.textContent = 'Stop test';
                 toggleBtn.className = 'btn btn-secondary';
                 readingsGrid.style.display = 'grid';
+                readingsGrid.hidden = false;
 
                 fetchLiveSensorData();
                 pollTimer = setInterval(fetchLiveSensorData, 2500);
-
-                checkStability.innerHTML = '<span class="check-ok"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>Stable reading criteria met';
-                qualityRatio.textContent = '4/5';
             } else {
                 if (pollTimer) clearInterval(pollTimer);
                 statusIcon.classList.remove('connected');
@@ -362,10 +526,9 @@
                 toggleBtn.textContent = 'Start live test';
                 toggleBtn.className = 'btn btn-primary';
                 readingsGrid.style.display = 'none';
-
-                checkStability.innerHTML = '<span class="check-miss">—</span>Stable reading criteria met';
-                qualityRatio.textContent = '2/5';
+                readingsGrid.hidden = true;
             }
+            refreshChecklist();
         });
 
         // Wire standard "+ New Soil Test" button to silently cycle to the next sample in the loop
@@ -374,7 +537,6 @@
 
         if (btnHeaderNewSoilTest) {
             btnHeaderNewSoilTest.addEventListener('click', async function (e) {
-                // If on /analysis, advance smoothly without page reload
                 if (window.location.pathname.includes('/analysis')) {
                     e.preventDefault();
                     try {
@@ -402,6 +564,8 @@
                 }
             });
         }
+
+        refreshChecklist();
     });
 </script>
 @endpush

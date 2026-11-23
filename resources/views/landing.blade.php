@@ -5,12 +5,12 @@
     <section class="hero">
         <div class="hero-copy">
             <span class="eyebrow">
-                <span class="status-pulse"></span>
+                <span class="status-pulse" aria-hidden="true"></span>
                 IoT-powered soil intelligence
             </span>
             <h1>Know Your Soil.<br /><em>Choose the Right Crops.</em></h1>
-            <p>Turn sensor readings into clear soil insights and transparent crop recommendations—designed for farmers, students, and agricultural researchers.</p>
-            
+            <p>Turn sensor readings into clear soil insights, fertilizer guidance, and transparent crop recommendations, designed for farmers, students, and agricultural researchers.</p>
+
             <div class="hero-actions">
                 <a href="{{ route('analysis') }}" class="btn btn-primary">
                     <span>Analyze soil</span>
@@ -26,12 +26,12 @@
         </div>
 
         <div class="hero-visual">
-            <img src="https://images.unsplash.com/photo-1609554259810-ad331c1a9519?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=85&w=1400" alt="Farmer assessing an agricultural field">
-            
+            <img src="https://images.unsplash.com/photo-1609554259810-ad331c1a9519?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=85&w=1400" alt="Farmer assessing an agricultural field" decoding="async" fetchpriority="high">
+
             <div class="hero-panel card">
                 <div class="row">
                     <div>
-                        <small>Current sample</small>
+                        <small>Sample preview</small>
                         <b>Demo Plot A</b>
                     </div>
                     <x-badge tone="amber">Preliminary</x-badge>
@@ -60,10 +60,10 @@
     <!-- Trust Strip -->
     <section class="trust-strip">
         <span>Built for transparent agricultural decisions</span>
-        <div><b>4</b><small>supported measurements</small></div>
-        <div><b>8+</b><small>initial crop profiles</small></div>
+        <div><b>4</b><small>supported sensors</small></div>
+        <div><b>16</b><small>documented crop profiles</small></div>
         <div><b>100%</b><small>traceable sample data</small></div>
-        <div><b>0</b><small>unsupported “health” claims</small></div>
+        <div><b>0</b><small>unsupported health claims</small></div>
     </section>
 
     <!-- Features Section -->
@@ -107,7 +107,7 @@
                 <span class="feature-number">05</span>
                 <span class="metric-icon tone-green"><x-icon name="file" /></span>
                 <h3>Actionable guidance</h3>
-                <p>Understand limitations and the additional tests needed before making a decision.</p>
+                <p>Understand limitations, fertilizer dosage plans, and rainfall timing before applying treatment.</p>
             </article>
         </div>
     </section>
@@ -115,7 +115,7 @@
     <!-- How It Works Section -->
     <section class="how-section" id="how">
         <div class="how-image">
-            <img src="https://images.unsplash.com/photo-1709456808420-061f2b8488d7?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=80&w=1000" alt="Rice fields in the Philippines">
+            <img src="https://images.unsplash.com/photo-1709456808420-061f2b8488d7?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=80&w=1000" alt="Rice fields in the Philippines" loading="lazy" decoding="async">
             <span class="photo-caption">Agricultural decisions begin with reliable evidence.</span>
         </div>
 
@@ -168,7 +168,7 @@
     <section class="landing-section crop-preview">
         <div class="center-title">
             <span class="section-kicker">Transparent recommendations</span>
-            <h2>See what fits—and what’s still unknown</h2>
+            <h2>See what fits, and what is still unknown</h2>
             <p>Potential matches never hide incomplete evidence. Each crop explains the measurements used and what to test next.</p>
         </div>
 

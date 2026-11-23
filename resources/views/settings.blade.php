@@ -1,6 +1,12 @@
 @extends('layouts.app', ['title' => 'Settings'])
 
 @section('content')
+    @php
+        $currentTab = $activeTab ?? 'profile';
+        $deviceStatus = $device?->status ?? 'offline';
+        $deviceTone = $deviceStatus === 'online' ? 'green' : ($deviceStatus === 'error' ? 'red' : 'gray');
+    @endphp
+
     <div class="page-title">
         <div>
             <h1>Settings</h1>
@@ -9,21 +15,21 @@
     </div>
 
     @if(session('success'))
-        <div class="notice success" style="margin-bottom: 20px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 14px 18px; border-radius: 10px; display: flex; align-items: center; gap: 10px;">
+        <div class="notice success" role="status">
             <x-icon name="check" :size="20" />
             <div>
-                <b style="color: #166534; font-size: 13px;">Success</b>
-                <span style="display: block; font-size: 12px; color: #15803d; margin-top: 2px;">{{ session('success') }}</span>
+                <b>Success</b>
+                <span>{{ session('success') }}</span>
             </div>
         </div>
     @endif
 
     @if($errors->any())
-        <div class="notice error" style="margin-bottom: 20px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 14px 18px; border-radius: 10px; display: flex; align-items: flex-start; gap: 10px;">
+        <div class="notice error" role="alert">
             <x-icon name="alert" :size="20" />
             <div>
-                <b style="color: #991b1b; font-size: 13px;">Please correct the following:</b>
-                <ul style="margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: #b91c1c;">
+                <b>Please correct the following:</b>
+                <ul>
                     @foreach($errors->all() as $error)
                         <li>{{ $error }}</li>
                     @endforeach
@@ -35,32 +41,32 @@
     <!-- Settings Navigation & Form Grid -->
     <div class="settings-grid">
         <!-- Settings Category Nav -->
-        <nav class="card settings-nav" id="settingsNav">
-            <button type="button" class="{{ ($activeTab ?? 'profile') === 'profile' ? 'active' : '' }}" data-tab="profile">
+        <nav class="card settings-nav" id="settingsNav" role="tablist" aria-orientation="vertical" aria-label="Settings categories">
+            <button type="button" role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="{{ $currentTab === 'profile' ? 'true' : 'false' }}" class="{{ $currentTab === 'profile' ? 'active' : '' }}" data-tab="profile">
                 <span>User profile</span>
                 <x-icon name="chevron" :size="15" />
             </button>
-            <button type="button" class="{{ ($activeTab ?? '') === 'units' ? 'active' : '' }}" data-tab="units">
+            <button type="button" role="tab" id="tab-units" aria-controls="panel-units" aria-selected="{{ $currentTab === 'units' ? 'true' : 'false' }}" class="{{ $currentTab === 'units' ? 'active' : '' }}" data-tab="units">
                 <span>Measurement units</span>
                 <x-icon name="chevron" :size="15" />
             </button>
-            <button type="button" class="{{ ($activeTab ?? '') === 'metadata' ? 'active' : '' }}" data-tab="metadata">
+            <button type="button" role="tab" id="tab-metadata" aria-controls="panel-metadata" aria-selected="{{ $currentTab === 'metadata' ? 'true' : 'false' }}" class="{{ $currentTab === 'metadata' ? 'active' : '' }}" data-tab="metadata">
                 <span>Sample metadata</span>
                 <x-icon name="chevron" :size="15" />
             </button>
-            <button type="button" class="{{ ($activeTab ?? '') === 'crops' ? 'active' : '' }}" data-tab="crops">
+            <button type="button" role="tab" id="tab-crops" aria-controls="panel-crops" aria-selected="{{ $currentTab === 'crops' ? 'true' : 'false' }}" class="{{ $currentTab === 'crops' ? 'active' : '' }}" data-tab="crops">
                 <span>Crop recommendations</span>
                 <x-icon name="chevron" :size="15" />
             </button>
-            <button type="button" class="{{ ($activeTab ?? '') === 'exports' ? 'active' : '' }}" data-tab="exports">
+            <button type="button" role="tab" id="tab-exports" aria-controls="panel-exports" aria-selected="{{ $currentTab === 'exports' ? 'true' : 'false' }}" class="{{ $currentTab === 'exports' ? 'active' : '' }}" data-tab="exports">
                 <span>Data exports</span>
                 <x-icon name="chevron" :size="15" />
             </button>
-            <button type="button" class="{{ ($activeTab ?? '') === 'device' ? 'active' : '' }}" data-tab="device">
+            <button type="button" role="tab" id="tab-device" aria-controls="panel-device" aria-selected="{{ $currentTab === 'device' ? 'true' : 'false' }}" class="{{ $currentTab === 'device' ? 'active' : '' }}" data-tab="device">
                 <span>Device configuration</span>
                 <x-icon name="chevron" :size="15" />
             </button>
-            <button type="button" class="{{ ($activeTab ?? '') === 'about' ? 'active' : '' }}" data-tab="about">
+            <button type="button" role="tab" id="tab-about" aria-controls="panel-about" aria-selected="{{ $currentTab === 'about' ? 'true' : 'false' }}" class="{{ $currentTab === 'about' ? 'active' : '' }}" data-tab="about">
                 <span>About the project</span>
                 <x-icon name="chevron" :size="15" />
             </button>
@@ -69,7 +75,7 @@
         <!-- Right Side Tab Panels Container -->
         <div class="settings-content">
             <!-- TAB 1: User Profile Form -->
-            <section class="card settings-form tab-panel" id="panel-profile" style="{{ ($activeTab ?? 'profile') === 'profile' ? '' : 'display: none;' }}">
+            <section class="card settings-form tab-panel" id="panel-profile" role="tabpanel" aria-labelledby="tab-profile" @if($currentTab !== 'profile') hidden @endif>
                 <span class="section-kicker">Account settings</span>
                 <h2>User profile</h2>
                 <p>Used for sample provenance and generated report attribution in research records.</p>
@@ -78,15 +84,15 @@
                 <div class="profile-edit">
                     <div id="avatarPreviewContainer" style="flex-shrink: 0;">
                         @if($user->avatar_url)
-                            <img src="{{ $user->avatar_url }}" alt="{{ $user->name }}" class="avatar large" id="avatarPreviewImg" style="object-fit: cover; border-radius: 50%;">
+                            <img src="{{ $user->avatar_url }}" alt="{{ $user->name }}" class="avatar large avatar-img" id="avatarPreviewImg">
                         @else
                             <span class="avatar large" id="avatarPreviewInitials">{{ $user->initials }}</span>
                         @endif
                     </div>
-                    <div>
+                    <div class="profile-meta">
                         <b id="displayUserName">{{ $user->name }}</b>
                         <small id="displayUserRole">{{ $user->role }}</small>
-                        <small style="color: #64748b; font-size: 11px;">{{ $user->organization }} &bull; {{ $user->region }}</small>
+                        <small>{{ $user->organization }} · {{ $user->region }}</small>
                     </div>
                     <button type="button" class="btn btn-secondary" onclick="document.getElementById('avatarFileInput').click()">
                         <x-icon name="camera" :size="15" />
@@ -96,16 +102,16 @@
 
                 <form action="{{ route('settings.profile') }}" method="POST" enctype="multipart/form-data" id="profileForm">
                     @csrf
-                    <input type="file" name="avatar" id="avatarFileInput" accept="image/*" style="display: none;">
+                    <input type="file" name="avatar" id="avatarFileInput" accept="image/*" hidden>
 
                     <div class="form-grid">
                         <label>
-                            <span>Full name <b style="color: #ef4444;">*</b></span>
+                            <span>Full name <span class="required-mark">*</span></span>
                             <input type="text" name="name" id="inputName" value="{{ old('name', $user->name) }}" required>
                         </label>
 
                         <label>
-                            <span>Role / Title <b style="color: #ef4444;">*</b></span>
+                            <span>Role / Title <span class="required-mark">*</span></span>
                             <select name="role" id="inputRole" required>
                                 @php
                                     $roles = ['Agricultural Researcher', 'Agronomist', 'Farmer', 'Soil Scientist', 'Student', 'Laboratory Technician', 'Extension Officer'];
@@ -123,7 +129,7 @@
                         </label>
 
                         <label>
-                            <span>Agricultural Region <b style="color: #ef4444;">*</b></span>
+                            <span>Agricultural Region <span class="required-mark">*</span></span>
                             <select name="region" required>
                                 @php
                                     $regions = [
@@ -141,7 +147,7 @@
                         </label>
 
                         <label>
-                            <span>Email address <b style="color: #ef4444;">*</b></span>
+                            <span>Email address <span class="required-mark">*</span></span>
                             <input type="email" name="email" value="{{ old('email', $user->email) }}" required>
                         </label>
 
@@ -166,31 +172,31 @@
                 </form>
 
                 <!-- Password and Security Sub-section -->
-                <div style="margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--line);">
+                <div class="settings-subsection">
                     <span class="section-kicker">Security credentials</span>
-                    <h3 style="margin: 4px 0 6px; font-size: 16px;">Change account password</h3>
-                    <p style="font-size: 12px; color: var(--muted); margin-bottom: 16px;">Update your password to keep research access and data management secure.</p>
+                    <h3>Change account password</h3>
+                    <p>Update your password to keep research access and data management secure.</p>
 
                     <form action="{{ route('settings.security') }}" method="POST">
                         @csrf
                         <div class="form-grid">
                             <label>
-                                <span>Current password <b style="color: #ef4444;">*</b></span>
+                                <span>Current password <span class="required-mark">*</span></span>
                                 <input type="password" name="current_password" required placeholder="Enter current password">
                             </label>
 
                             <label>
-                                <span>New password <b style="color: #ef4444;">*</b></span>
+                                <span>New password <span class="required-mark">*</span></span>
                                 <input type="password" name="new_password" required minlength="8" placeholder="Minimum 8 characters">
                             </label>
 
                             <label class="full">
-                                <span>Confirm new password <b style="color: #ef4444;">*</b></span>
+                                <span>Confirm new password <span class="required-mark">*</span></span>
                                 <input type="password" name="new_password_confirmation" required minlength="8" placeholder="Re-type new password">
                             </label>
                         </div>
 
-                        <div class="settings-actions" style="margin-top: 14px; padding-top: 14px;">
+                        <div class="settings-actions">
                             <button type="submit" class="btn btn-secondary">
                                 <x-icon name="lock" :size="15" />
                                 <span>Update password</span>
@@ -201,9 +207,9 @@
             </section>
 
             <!-- TAB 2: Measurement Units -->
-            <section class="card settings-form tab-panel" id="panel-units" style="{{ ($activeTab ?? '') === 'units' ? '' : 'display: none;' }}">
+            <section class="card settings-form tab-panel" id="panel-units" role="tabpanel" aria-labelledby="tab-units" @if($currentTab !== 'units') hidden @endif>
                 <span class="section-kicker">Sensor telemetry</span>
-                <h2>Measurement units & precision</h2>
+                <h2>Measurement units &amp; precision</h2>
                 <p>Configure how raw sensor readings are formatted, converted, and displayed across dashboard metrics and reports.</p>
 
                 <form action="{{ route('settings.preferences') }}" method="POST">
@@ -214,7 +220,7 @@
                         <label>
                             <span>Temperature unit</span>
                             <select name="temp_unit">
-                                <option value="C" {{ $user->getPreference('temp_unit', 'C') === 'C' ? 'selected' : '' }}>Celsius (°C) — Default</option>
+                                <option value="C" {{ $user->getPreference('temp_unit', 'C') === 'C' ? 'selected' : '' }}>Celsius (°C) - Default</option>
                                 <option value="F" {{ $user->getPreference('temp_unit', 'C') === 'F' ? 'selected' : '' }}>Fahrenheit (°F)</option>
                             </select>
                         </label>
@@ -254,9 +260,9 @@
             </section>
 
             <!-- TAB 3: Sample Metadata -->
-            <section class="card settings-form tab-panel" id="panel-metadata" style="{{ ($activeTab ?? '') === 'metadata' ? '' : 'display: none;' }}">
+            <section class="card settings-form tab-panel" id="panel-metadata" role="tabpanel" aria-labelledby="tab-metadata" @if($currentTab !== 'metadata') hidden @endif>
                 <span class="section-kicker">Field operations</span>
-                <h2>Sample metadata & logging defaults</h2>
+                <h2>Sample metadata &amp; logging defaults</h2>
                 <p>Pre-populate sample creation forms and analysis screens to speed up field operations.</p>
 
                 <form action="{{ route('settings.preferences') }}" method="POST">
@@ -288,9 +294,9 @@
                             <input type="text" name="default_location" value="{{ $user->getPreference('default_location', 'Demo Farm, Laguna') }}" placeholder="e.g. Demo Farm, Laguna">
                         </label>
 
-                        <div class="full" style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
-                            <input type="checkbox" id="autoTimestamp" name="auto_timestamp" value="1" {{ $user->getPreference('auto_timestamp', true) ? 'checked' : '' }} style="width: 18px; height: 18px; accent-color: var(--green-600);">
-                            <label for="autoTimestamp" style="font-size: 13px; font-weight: 600; color: #1e293b; cursor: pointer;">
+                        <div class="full checkbox-row">
+                            <input type="checkbox" id="autoTimestamp" name="auto_timestamp" value="1" {{ $user->getPreference('auto_timestamp', true) ? 'checked' : '' }}>
+                            <label for="autoTimestamp">
                                 Automatically timestamp newly registered soil tests with current local time
                             </label>
                         </div>
@@ -306,7 +312,7 @@
             </section>
 
             <!-- TAB 4: Crop Recommendations -->
-            <section class="card settings-form tab-panel" id="panel-crops" style="{{ ($activeTab ?? '') === 'crops' ? '' : 'display: none;' }}">
+            <section class="card settings-form tab-panel" id="panel-crops" role="tabpanel" aria-labelledby="tab-crops" @if($currentTab !== 'crops') hidden @endif>
                 <span class="section-kicker">Agronomic engine</span>
                 <h2>Recommendation engine rules</h2>
                 <p>Adjust suitability classification sensitivity and missing parameter handling criteria.</p>
@@ -320,7 +326,7 @@
                             <span>Recommendation engine sensitivity</span>
                             <select name="recommendation_tier">
                                 <option value="balanced" {{ $user->getPreference('recommendation_tier', 'balanced') === 'balanced' ? 'selected' : '' }}>
-                                    Balanced (Standard agronomic intervals with transparent limiting factors) — Recommended
+                                    Balanced (Standard agronomic intervals with transparent limiting factors) - Recommended
                                 </option>
                                 <option value="strict" {{ $user->getPreference('recommendation_tier', 'balanced') === 'strict' ? 'selected' : '' }}>
                                     Strict / Research Grade (Requires optimal pH and calibrated moisture for Match)
@@ -335,7 +341,7 @@
                             <span>Missing data handling policy</span>
                             <select name="missing_data_policy">
                                 <option value="flag_uncalibrated" {{ $user->getPreference('missing_data_policy', 'flag_uncalibrated') === 'flag_uncalibrated' ? 'selected' : '' }}>
-                                    Flag uncalibrated readings (Withhold numeric score for uncalibrated ADC or missing EC) — Recommended
+                                    Flag uncalibrated readings (Withhold numeric score for uncalibrated ADC or missing EC) - Recommended
                                 </option>
                                 <option value="require_all" {{ $user->getPreference('missing_data_policy', 'flag_uncalibrated') === 'require_all' ? 'selected' : '' }}>
                                     Require all 4 sensor channels (Strict validation before generating suitability)
@@ -357,41 +363,31 @@
             </section>
 
             <!-- TAB 5: Data Exports -->
-            <section class="card settings-form tab-panel" id="panel-exports" style="{{ ($activeTab ?? '') === 'exports' ? '' : 'display: none;' }}">
+            <section class="card settings-form tab-panel" id="panel-exports" role="tabpanel" aria-labelledby="tab-exports" @if($currentTab !== 'exports') hidden @endif>
                 <span class="section-kicker">Data portability</span>
-                <h2>Data exports & research records</h2>
-                <p>Download full database records, sensor telemetry, and crop requirements in open UTF-8 CSV format.</p>
+                <h2>Data exports &amp; research records</h2>
+                <p>Download full database records, sensor telemetry, fertilizer advisories, and crop requirements in open UTF-8 CSV format.</p>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px;">
-                    <!-- Export Samples Card -->
-                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
+                <div class="export-grid">
+                    <div class="export-card">
                         <div>
-                            <div style="width: 40px; height: 40px; border-radius: 10px; background: #ecfdf5; color: #16a34a; display: grid; place-items: center; margin-bottom: 12px;">
-                                <x-icon name="file" :size="20" />
-                            </div>
-                            <h3 style="margin: 0 0 6px; font-size: 15px; font-weight: 700; color: #0f172a;">Soil Samples & Telemetry Log</h3>
-                            <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin: 0 0 16px;">
-                                Export all registered soil samples, collection timestamps, recorded pH, moisture, temperature, EC, and preliminary assessment classifications.
-                            </p>
+                            <span class="metric-icon tone-green" style="margin-bottom: 12px;"><x-icon name="file" :size="20" /></span>
+                            <h3>Soil Samples &amp; Telemetry Log</h3>
+                            <p>Export all registered soil samples, timestamps, 4-sensor measurements, fertilizer recommendations, and Rain Guard advisories.</p>
                         </div>
-                        <a href="{{ route('settings.export.samples') }}" class="btn btn-primary" style="justify-content: center;">
+                        <a href="{{ route('settings.export.samples') }}" class="btn btn-primary btn-block">
                             <x-icon name="download" :size="16" />
                             <span>Download Samples CSV</span>
                         </a>
                     </div>
 
-                    <!-- Export Crops Card -->
-                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div class="export-card">
                         <div>
-                            <div style="width: 40px; height: 40px; border-radius: 10px; background: #eff6ff; color: #2563eb; display: grid; place-items: center; margin-bottom: 12px;">
-                                <x-icon name="sprout" :size="20" />
-                            </div>
-                            <h3 style="margin: 0 0 6px; font-size: 15px; font-weight: 700; color: #0f172a;">Crop Agronomic Reference Database</h3>
-                            <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin: 0 0 16px;">
-                                Export all 16 crop profiles, scientific names, documented pH ranges, moisture tolerances, temperature brackets, and Philippine DA/FAO citations.
-                            </p>
+                            <span class="metric-icon tone-blue" style="margin-bottom: 12px;"><x-icon name="sprout" :size="20" /></span>
+                            <h3>Crop Agronomic Reference Database</h3>
+                            <p>Export all 16 crop profiles, scientific names, documented pH ranges, moisture tolerances, temperature brackets, and Philippine DA/FAO citations.</p>
                         </div>
-                        <a href="{{ route('settings.export.crops') }}" class="btn btn-secondary" style="justify-content: center;">
+                        <a href="{{ route('settings.export.crops') }}" class="btn btn-secondary btn-block">
                             <x-icon name="download" :size="16" />
                             <span>Download Crops CSV</span>
                         </a>
@@ -400,21 +396,21 @@
             </section>
 
             <!-- TAB 6: Device Configuration -->
-            <section class="card settings-form tab-panel" id="panel-device" style="{{ ($activeTab ?? '') === 'device' ? '' : 'display: none;' }}">
+            <section class="card settings-form tab-panel" id="panel-device" role="tabpanel" aria-labelledby="tab-device" @if($currentTab !== 'device') hidden @endif>
                 <span class="section-kicker">IoT Hardware node</span>
                 <h2>ESP32 Device node settings</h2>
                 <p>Manage hardware telemetry sync intervals and check ingestion API configuration.</p>
 
-                <div class="device-identity" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 20px;">
-                    <div class="device-icon" style="background: #ecfdf5; color: #16a34a; width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center;">
+                <div class="settings-device-banner">
+                    <div class="device-icon">
                         <x-icon name="cpu" :size="22" />
                     </div>
                     <div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="row">
                             <b style="font-size: 15px;">{{ $device?->display_name ?? 'ESP32 Soil Node 01' }}</b>
-                            <x-badge tone="green">Online</x-badge>
+                            <x-badge :tone="$deviceTone">{{ ucfirst($deviceStatus) }}</x-badge>
                         </div>
-                        <small style="color: #64748b; font-size: 11px;">UID: {{ $device?->device_uid ?? 'ESP32-01' }} &bull; Firmware: v1.4.2 &bull; Auth: Device Token Hash</small>
+                        <small>UID: {{ $device?->device_uid ?? 'ESP32-01' }} · Auth: Device Token Hash</small>
                     </div>
                 </div>
 
@@ -435,13 +431,13 @@
 
                         <label>
                             <span>Linked IoT Device</span>
-                            <input type="text" value="{{ $device?->device_uid ?? 'ESP32-01' }} (Active)" readonly style="background: #f1f5f9; cursor: not-allowed;">
+                            <input type="text" value="{{ $device?->device_uid ?? 'ESP32-01' }} ({{ ucfirst($deviceStatus) }})" readonly class="input-readonly">
                         </label>
 
                         <label class="full">
                             <span>API Ingestion Endpoint (POST)</span>
-                            <div style="display: flex; gap: 8px;">
-                                <input type="text" id="apiEndpointUrl" value="{{ url('/api/v1/readings') }}" readonly style="background: #f8fafc; font-family: ui-monospace, monospace; font-size: 12px;">
+                            <div class="inline-endpoint">
+                                <input type="text" id="apiEndpointUrl" value="{{ url('/api/v1/readings') }}" readonly>
                                 <button type="button" class="btn btn-secondary" onclick="copyEndpointUrl()" id="copyUrlBtn">
                                     <x-icon name="clipboard" :size="15" />
                                     <span>Copy URL</span>
@@ -450,10 +446,10 @@
                         </label>
                     </div>
 
-                    <div class="settings-actions" style="justify-content: space-between;">
+                    <div class="settings-actions split">
                         <a href="{{ route('device') }}" class="btn btn-secondary">
                             <x-icon name="sliders" :size="15" />
-                            <span>Open Telemetry Simulator & Monitor</span>
+                            <span>Open Telemetry Simulator &amp; Monitor</span>
                         </a>
                         <button type="submit" class="btn btn-primary">
                             <x-icon name="check" :size="16" />
@@ -464,50 +460,46 @@
             </section>
 
             <!-- TAB 7: About the Project -->
-            <section class="card settings-form tab-panel" id="panel-about" style="{{ ($activeTab ?? '') === 'about' ? '' : 'display: none;' }}">
+            <section class="card settings-form tab-panel" id="panel-about" role="tabpanel" aria-labelledby="tab-about" @if($currentTab !== 'about') hidden @endif>
                 <span class="section-kicker">Project specifications</span>
                 <h2>About SoilSense IoT Platform</h2>
-                <p>An academic smart agriculture research system for automated soil testing, sensor calibration verification, and transparent crop suitability assessment.</p>
+                <p>An academic smart agriculture research system for automated soil testing, sensor calibration verification, and transparent crop &amp; fertilizer decision support.</p>
 
-                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-top: 18px;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <div class="spec-table-wrap">
+                    <table class="spec-table">
                         <tbody>
                             <tr>
-                                <td style="padding: 12px 16px; font-weight: 700; color: #334155; width: 35%; border-bottom: 1px solid #e2e8f0;">Platform Version</td>
-                                <td style="padding: 12px 16px; color: #0f172a; border-bottom: 1px solid #e2e8f0;"><b>SoilSense v1.2.0</b> (Academic Build 2026.10)</td>
+                                <th scope="row">Platform Version</th>
+                                <td><b>SoilSense v1.2.0</b> (Academic Build 2026.11)</td>
                             </tr>
                             <tr>
-                                <td style="padding: 12px 16px; font-weight: 700; color: #334155; border-bottom: 1px solid #e2e8f0;">Software Stack</td>
-                                <td style="padding: 12px 16px; color: #0f172a; border-bottom: 1px solid #e2e8f0;">Laravel 12 / PHP 8.2+ / MySQL 8.0 / Vite 6 / Chart.js 4</td>
+                                <th scope="row">Software Stack</th>
+                                <td>Laravel 12 / PHP 8.2+ / FastAPI ML Service / Vite / Chart.js 4</td>
                             </tr>
                             <tr>
-                                <td style="padding: 12px 16px; font-weight: 700; color: #334155; border-bottom: 1px solid #e2e8f0;">Hardware Architecture</td>
-                                <td style="padding: 12px 16px; color: #0f172a; border-bottom: 1px solid #e2e8f0;">ESP32 30-Pin NodeMCU (Dual-core Xtensa LX6 @ 240MHz)</td>
+                                <th scope="row">Hardware Architecture</th>
+                                <td>ESP32 30-Pin NodeMCU (Dual-core Xtensa LX6 @ 240MHz)</td>
                             </tr>
                             <tr>
-                                <td style="padding: 12px 16px; font-weight: 700; color: #334155; border-bottom: 1px solid #e2e8f0;">Supported Sensors</td>
-                                <td style="padding: 12px 16px; color: #0f172a; border-bottom: 1px solid #e2e8f0;">DFRobot Analog pH Sensor, Capacitive Soil Moisture v2.0, DS18B20 Temp Probe, DFRobot EC Meter</td>
+                                <th scope="row">Supported Sensors</th>
+                                <td>DFRobot Analog pH Sensor, Capacitive Soil Moisture v2.0, DS18B20 Temp Probe, DFRobot EC Meter</td>
                             </tr>
                             <tr>
-                                <td style="padding: 12px 16px; font-weight: 700; color: #334155; border-bottom: 1px solid #e2e8f0;">Agronomic References</td>
-                                <td style="padding: 12px 16px; color: #0f172a; border-bottom: 1px solid #e2e8f0;">
-                                    FAO Irrigation & Drainage Paper 29, Philippine DA-BAR Horticulture Compendium, PCARRD Farm Bulletins, East-West Seed Agronomy Guides
-                                </td>
+                                <th scope="row">Agronomic References</th>
+                                <td>FAO Irrigation &amp; Drainage Paper 29, Philippine DA-BAR Horticulture Compendium, PCARRD Farm Bulletins, East-West Seed Agronomy Guides</td>
                             </tr>
                             <tr>
-                                <td style="padding: 12px 16px; font-weight: 700; color: #334155;">Security & Integrity Rules</td>
-                                <td style="padding: 12px 16px; color: #0f172a;">
-                                    Uncalibrated readings flagged transparently; Missing EC flags salinity risk without inventing scores; Device tokens hashed via SHA-256.
-                                </td>
+                                <th scope="row">Security &amp; Integrity Rules</th>
+                                <td>Uncalibrated readings flagged transparently; Missing EC flags salinity risk without inventing scores; Device tokens hashed via SHA-256.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
-                <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                <div class="settings-actions">
                     <a href="{{ route('landing') }}" class="btn btn-ghost">
                         <span>Visit Public Research Overview</span>
-                        <x-icon name="arrow" :size="15" />
+                        <x-icon name="chevron" :size="15" />
                     </a>
                 </div>
             </section>
@@ -519,47 +511,51 @@
         <x-icon name="settings" />
         <div>
             <b>Academic prototype security note</b>
-            <span>Device credential tokens are securely hashed in MySQL (`device_tokens`). Private API keys are never rendered in plain text or browser source code.</span>
+            <span>Device credential tokens are stored as SHA-256 hashes in <code>iot_devices</code>. Private API keys for backend ML inference are never exposed in client markup.</span>
         </div>
     </div>
 
     @push('scripts')
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            const navButtons = document.querySelectorAll('#settingsNav button[data-tab]');
+            const navButtons = Array.from(document.querySelectorAll('#settingsNav button[data-tab]'));
             const tabPanels = document.querySelectorAll('.tab-panel');
 
             function switchTab(tabName) {
                 navButtons.forEach(btn => {
-                    if (btn.getAttribute('data-tab') === tabName) {
-                        btn.classList.add('active');
-                    } else {
-                        btn.classList.remove('active');
-                    }
+                    const isActive = btn.getAttribute('data-tab') === tabName;
+                    btn.classList.toggle('active', isActive);
+                    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
                 });
 
                 tabPanels.forEach(panel => {
-                    if (panel.id === 'panel-' + tabName) {
-                        panel.style.display = 'block';
-                    } else {
-                        panel.style.display = 'none';
-                    }
+                    panel.hidden = panel.id !== ('panel-' + tabName);
                 });
 
-                // Update URL without page reload
                 const url = new URL(window.location);
                 url.searchParams.set('tab', tabName);
                 window.history.replaceState({}, '', url);
             }
 
-            navButtons.forEach(btn => {
+            navButtons.forEach((btn, idx) => {
                 btn.addEventListener('click', function () {
-                    const target = this.getAttribute('data-tab');
-                    switchTab(target);
+                    switchTab(this.getAttribute('data-tab'));
+                });
+                btn.addEventListener('keydown', function (e) {
+                    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        const next = navButtons[(idx + 1) % navButtons.length];
+                        next.click();
+                        next.focus();
+                    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        const prev = navButtons[(idx - 1 + navButtons.length) % navButtons.length];
+                        prev.click();
+                        prev.focus();
+                    }
                 });
             });
 
-            // Live avatar file upload preview
             const avatarFileInput = document.getElementById('avatarFileInput');
             const avatarPreviewContainer = document.getElementById('avatarPreviewContainer');
 
@@ -569,14 +565,13 @@
                     if (file) {
                         const reader = new FileReader();
                         reader.onload = function (event) {
-                            avatarPreviewContainer.innerHTML = `<img src="${event.target.result}" alt="Preview" class="avatar large" style="object-fit: cover; border-radius: 50%;">`;
+                            avatarPreviewContainer.innerHTML = `<img src="${event.target.result}" alt="Preview" class="avatar large avatar-img">`;
                         };
                         reader.readAsDataURL(file);
                     }
                 });
             }
 
-            // Live name & role header preview
             const inputName = document.getElementById('inputName');
             const inputRole = document.getElementById('inputRole');
             const displayUserName = document.getElementById('displayUserName');
@@ -596,17 +591,25 @@
 
         function copyEndpointUrl() {
             const endpointInput = document.getElementById('apiEndpointUrl');
-            if (endpointInput) {
-                endpointInput.select();
-                endpointInput.setSelectionRange(0, 99999);
-                navigator.clipboard.writeText(endpointInput.value).then(() => {
-                    const btn = document.getElementById('copyUrlBtn');
-                    const originalText = btn.innerHTML;
-                    btn.innerHTML = `<x-icon name="check" :size="15" /><span>Copied!</span>`;
-                    setTimeout(() => {
-                        btn.innerHTML = originalText;
-                    }, 2000);
-                });
+            const copyBtn = document.getElementById('copyUrlBtn');
+            if (!endpointInput) return;
+
+            endpointInput.select();
+            endpointInput.setSelectionRange(0, 99999);
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(endpointInput.value);
+            } else {
+                document.execCommand('copy');
+            }
+            if (copyBtn) {
+                const label = copyBtn.querySelector('span');
+                if (label) {
+                    label.textContent = 'Copied!';
+                    window.setTimeout(() => { label.textContent = 'Copy URL'; }, 1800);
+                }
+            }
+            if (window.SoilSenseUI) {
+                window.SoilSenseUI.toast('Ingestion endpoint URL copied to clipboard.', 'success');
             }
         }
     </script>

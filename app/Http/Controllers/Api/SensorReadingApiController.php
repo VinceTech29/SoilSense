@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\StoreSensorReadingApiRequest;
+use App\Http\Resources\FertilizerRecommendationResource;
 use App\Models\IotDevice;
 use App\Models\SensorReading;
 use App\Models\SoilSample;
+use App\Services\FertilizerRecommendationService;
 use App\Services\SoilAssessmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,7 +19,8 @@ use Symfony\Component\HttpFoundation\Response;
 class SensorReadingApiController extends Controller
 {
     public function __construct(
-        protected SoilAssessmentService $soilAssessmentService
+        protected SoilAssessmentService $soilAssessmentService,
+        protected FertilizerRecommendationService $fertilizerRecommendationService
     ) {}
 
     /**
@@ -127,11 +130,26 @@ class SensorReadingApiController extends Controller
                 $assessmentTriggered = true;
             }
 
+            $fertilizerRecommendation = null;
+            if ($assessmentTriggered) {
+                try {
+                    $fertilizerRecommendation = $this->fertilizerRecommendationService->recommend(
+                        $sample,
+                        $reading,
+                        $assessment
+                    );
+                    $fertilizerRecommendation->setRelation('reading', $reading);
+                } catch (\Throwable $e) {
+                    $fertilizerRecommendation = null;
+                }
+            }
+
             return [
                 'reading' => $reading,
                 'audit' => $audit,
                 'assessment_triggered' => $assessmentTriggered,
                 'assessment' => $assessment,
+                'fertilizer_recommendation' => $fertilizerRecommendation,
             ];
         });
 
@@ -139,6 +157,7 @@ class SensorReadingApiController extends Controller
         $audit = $result['audit'];
         $assessmentTriggered = $result['assessment_triggered'];
         $assessment = $result['assessment'];
+        $fertilizerRecommendation = $result['fertilizer_recommendation'];
 
         return response()->json([
             'success' => true,
@@ -183,6 +202,9 @@ class SensorReadingApiController extends Controller
                     'summary' => $assessment?->summary,
                 ],
                 'active_sample' => \App\Http\Controllers\SoilSenseController::getActiveSampleData(),
+                'fertilizer_recommendation' => $fertilizerRecommendation
+                    ? (new FertilizerRecommendationResource($fertilizerRecommendation))->resolve($request)
+                    : null,
             ],
         ], Response::HTTP_CREATED);
     }
