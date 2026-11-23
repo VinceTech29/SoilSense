@@ -654,6 +654,230 @@ footer > small { grid-column: 1 / -1; padding-top: 20px; border-top: 1px solid #
 .spec-table tr:last-child th, .spec-table tr:last-child td { border-bottom: 0; }
 .input-readonly { background: #f1f5f9; color: #334155; cursor: not-allowed; }
 
+/* Live ESP32 Hardware Remote Control Panel */
+.hardware-control-card {
+  padding: 24px;
+  margin-bottom: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.hardware-control-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.hardware-control-card .card-header h2 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 4px 0 6px;
+}
+.hardware-control-card .card-header p {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+  max-width: 640px;
+  line-height: 1.5;
+}
+.hw-sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  white-space: nowrap;
+}
+.hw-sync-pill .live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.hw-samples-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+.hw-sample-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 18px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1.5px solid var(--line);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.hw-sample-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+.hw-sample-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 8px;
+}
+.hw-sample-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.hw-sample-target {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.hw-sample-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 4px;
+  display: block;
+}
+.hw-sample-meta {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+/* S1 Acidic */
+.hw-sample-btn[data-code="S1"] {
+  border-color: #fecaca;
+  background: #fff;
+}
+.hw-sample-btn[data-code="S1"] .hw-sample-badge {
+  color: #dc2626;
+}
+.hw-sample-btn[data-code="S1"] .hw-sample-target {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.hw-sample-btn[data-code="S1"] .hw-sample-meta strong {
+  color: #dc2626;
+  font-weight: 700;
+}
+.hw-sample-btn[data-code="S1"]:hover {
+  border-color: #f87171;
+  background: #fffafa;
+}
+
+/* S2 Neutral */
+.hw-sample-btn[data-code="S2"] {
+  border-color: #bbf7d0;
+  background: #fff;
+}
+.hw-sample-btn[data-code="S2"] .hw-sample-badge {
+  color: #16a34a;
+}
+.hw-sample-btn[data-code="S2"] .hw-sample-target {
+  background: #dcfce7;
+  color: #166534;
+}
+.hw-sample-btn[data-code="S2"] .hw-sample-meta strong {
+  color: #16a34a;
+  font-weight: 700;
+}
+.hw-sample-btn[data-code="S2"]:hover {
+  border-color: #4ade80;
+  background: #f8fdf9;
+}
+
+/* S3 Alkaline */
+.hw-sample-btn[data-code="S3"] {
+  border-color: #bfdbfe;
+  background: #fff;
+}
+.hw-sample-btn[data-code="S3"] .hw-sample-badge {
+  color: #2563eb;
+}
+.hw-sample-btn[data-code="S3"] .hw-sample-target {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.hw-sample-btn[data-code="S3"] .hw-sample-meta strong {
+  color: #2563eb;
+  font-weight: 700;
+}
+.hw-sample-btn[data-code="S3"]:hover {
+  border-color: #60a5fa;
+  background: #f8faff;
+}
+
+/* Active Selected State */
+.hw-sample-btn.is-active {
+  border-width: 2px;
+}
+.hw-sample-btn[data-code="S1"].is-active {
+  border-color: #dc2626;
+  background: #fef2f2;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15), 0 6px 18px rgba(220, 38, 38, 0.1);
+}
+.hw-sample-btn[data-code="S2"].is-active {
+  border-color: #16a34a;
+  background: #f0fdf4;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15), 0 6px 18px rgba(22, 163, 74, 0.1);
+}
+.hw-sample-btn[data-code="S3"].is-active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15), 0 6px 18px rgba(37, 99, 235, 0.1);
+}
+
+.hw-sample-btn .active-indicator-tag {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
+}
+.hw-sample-btn[data-code="S1"] .active-indicator-tag { color: #dc2626; }
+.hw-sample-btn[data-code="S2"] .active-indicator-tag { color: #16a34a; }
+.hw-sample-btn[data-code="S3"] .active-indicator-tag { color: #2563eb; }
+.hw-sample-btn.is-active .active-indicator-tag {
+  display: flex;
+}
+
+.hw-switch-alert {
+  display: none;
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
 /* ESP32 Interactive Telemetry Simulator Styles */
 .simulator-card { padding: 24px; margin-bottom: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .simulator-card .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }

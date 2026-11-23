@@ -104,57 +104,73 @@
     </div>
 
     <!-- Live ESP32 Hardware Remote Control Panel -->
-    <section class="card hardware-control-card" style="margin-bottom: 24px; border: 1.5px solid #22c55e; background: linear-gradient(135deg, rgba(34,197,94,0.06) 0%, rgba(15,23,42,0.85) 100%);">
-        <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+    <section class="card hardware-control-card">
+        <div class="card-header">
             <div>
-                <span class="section-kicker" style="color: #22c55e; font-weight: 700;">Two-Way IoT Hardware Control</span>
-                <h2 style="font-size: 1.25rem; font-weight: 700; margin: 4px 0;">ESP32 Soil Sample Remote Switcher</h2>
-                <p style="font-size: 0.85rem; color: #94a3b8; margin: 0;">Click a soil sample below to remotely switch the active testing profile on your physical ESP32 and 16x2 LCD screen over WiFi.</p>
+                <span class="section-kicker">Two-Way IoT Hardware Control</span>
+                <h2>ESP32 Soil Sample Remote Switcher</h2>
+                <p>Click a soil sample below to remotely switch the active testing profile on your physical ESP32 and 16&times;2 LCD screen over WiFi.</p>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span id="hwSyncStatusBadge" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: rgba(34,197,94,0.18); color: #4ade80; border: 1px solid rgba(34,197,94,0.3);">
-                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e;"></span>
-                    Active on ESP32: <b id="currentActiveSampleText" style="margin-left: 4px;">{{ $activeSample['sample_code'] ?? 'S1' }} ({{ $activeSample['name'] ?? 'Sample 1: Acidic Peat' }})</b>
-                </span>
+            <div class="hw-sync-pill" id="hwSyncStatusBadge">
+                <span class="live-dot" aria-hidden="true"></span>
+                <span>Active on ESP32: <b id="currentActiveSampleText">{{ $activeSample['sample_code'] ?? 'S1' }} ({{ $activeSample['name'] ?? 'Sample 1: Acidic Peat' }})</b></span>
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px;">
+        <div class="hw-samples-grid">
             <!-- Sample 1 Button -->
-            <button type="button" class="hw-sample-btn" data-code="S1" data-ph="4.01" data-quality="ACIDIC"
-                style="display: flex; flex-direction: column; align-items: flex-start; padding: 16px; border-radius: 12px; border: 1.5px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08); text-align: left; cursor: pointer; transition: all 0.2s ease; position: relative;">
-                <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 6px;">
-                    <span style="font-size: 0.75rem; font-weight: 700; color: #f87171; text-transform: uppercase;">Sample 1 (Acidic)</span>
-                    <span style="font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: rgba(239,68,68,0.25); color: #fca5a5;">Target: 4.01 pH</span>
+            <button type="button" class="hw-sample-btn" data-code="S1" data-ph="4.01" data-quality="ACIDIC" aria-pressed="false">
+                <div class="hw-sample-top">
+                    <span class="hw-sample-badge">Sample 1 (Acidic)</span>
+                    <span class="hw-sample-target">Target: 4.01 pH</span>
                 </div>
-                <b style="font-size: 1.05rem; color: #fff; margin-bottom: 2px;">Acidic Peat Soil</b>
-                <small style="color: #94a3b8; font-size: 0.8rem;">Reflects: <span style="color: #f87171; font-weight: 600;">ACIDIC (4.01 ± 0.02)</span></small>
+                <b class="hw-sample-name">Acidic Peat Soil</b>
+                <div class="hw-sample-meta">
+                    <span>Reflects:</span>
+                    <strong>ACIDIC (4.01 &plusmn; 0.02)</strong>
+                </div>
+                <div class="active-indicator-tag">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Active on ESP32 Station</span>
+                </div>
             </button>
 
             <!-- Sample 2 Button -->
-            <button type="button" class="hw-sample-btn" data-code="S2" data-ph="6.86" data-quality="OPTIMAL"
-                style="display: flex; flex-direction: column; align-items: flex-start; padding: 16px; border-radius: 12px; border: 1.5px solid rgba(34, 197, 94, 0.4); background: rgba(34, 197, 94, 0.08); text-align: left; cursor: pointer; transition: all 0.2s ease; position: relative;">
-                <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 6px;">
-                    <span style="font-size: 0.75rem; font-weight: 700; color: #4ade80; text-transform: uppercase;">Sample 2 (Neutral)</span>
-                    <span style="font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: rgba(34,197,94,0.25); color: #86efac;">Target: 6.86 pH</span>
+            <button type="button" class="hw-sample-btn" data-code="S2" data-ph="6.86" data-quality="OPTIMAL" aria-pressed="false">
+                <div class="hw-sample-top">
+                    <span class="hw-sample-badge">Sample 2 (Neutral)</span>
+                    <span class="hw-sample-target">Target: 6.86 pH</span>
                 </div>
-                <b style="font-size: 1.05rem; color: #fff; margin-bottom: 2px;">Garden Loam Soil</b>
-                <small style="color: #94a3b8; font-size: 0.8rem;">Reflects: <span style="color: #4ade80; font-weight: 600;">OPTIMAL (6.86 ± 0.02)</span></small>
+                <b class="hw-sample-name">Garden Loam Soil</b>
+                <div class="hw-sample-meta">
+                    <span>Reflects:</span>
+                    <strong>OPTIMAL (6.86 &plusmn; 0.02)</strong>
+                </div>
+                <div class="active-indicator-tag">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Active on ESP32 Station</span>
+                </div>
             </button>
 
             <!-- Sample 3 Button -->
-            <button type="button" class="hw-sample-btn" data-code="S3" data-ph="9.18" data-quality="ALKALINE"
-                style="display: flex; flex-direction: column; align-items: flex-start; padding: 16px; border-radius: 12px; border: 1.5px solid rgba(59, 130, 246, 0.4); background: rgba(59, 130, 246, 0.08); text-align: left; cursor: pointer; transition: all 0.2s ease; position: relative;">
-                <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 6px;">
-                    <span style="font-size: 0.75rem; font-weight: 700; color: #60a5fa; text-transform: uppercase;">Sample 3 (Alkaline)</span>
-                    <span style="font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: rgba(59,130,246,0.25); color: #93c5fd;">Target: 9.18 pH</span>
+            <button type="button" class="hw-sample-btn" data-code="S3" data-ph="9.18" data-quality="ALKALINE" aria-pressed="false">
+                <div class="hw-sample-top">
+                    <span class="hw-sample-badge">Sample 3 (Alkaline)</span>
+                    <span class="hw-sample-target">Target: 9.18 pH</span>
                 </div>
-                <b style="font-size: 1.05rem; color: #fff; margin-bottom: 2px;">Chalky Clay Soil</b>
-                <small style="color: #94a3b8; font-size: 0.8rem;">Reflects: <span style="color: #60a5fa; font-weight: 600;">ALKALINE (9.18 ± 0.02)</span></small>
+                <b class="hw-sample-name">Chalky Clay Soil</b>
+                <div class="hw-sample-meta">
+                    <span>Reflects:</span>
+                    <strong>ALKALINE (9.18 &plusmn; 0.02)</strong>
+                </div>
+                <div class="active-indicator-tag">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Active on ESP32 Station</span>
+                </div>
             </button>
         </div>
 
-        <div id="hwSwitchAlert" style="display: none; margin-top: 14px; padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.3);"></div>
+        <div id="hwSwitchAlert" class="hw-switch-alert"></div>
     </section>
 
     <!-- Hardware Simulator & Telemetry Testing Console -->
@@ -544,13 +560,9 @@
         function highlightActiveHwButton(activeCode) {
             hwSampleBtns.forEach(btn => {
                 const code = btn.getAttribute('data-code');
-                if (code === activeCode) {
-                    btn.style.boxShadow = '0 0 0 2px #22c55e, 0 4px 12px rgba(34, 197, 94, 0.35)';
-                    btn.style.borderColor = '#22c55e';
-                } else {
-                    btn.style.boxShadow = 'none';
-                    btn.style.borderColor = btn.getAttribute('data-code') === 'S1' ? 'rgba(239,68,68,0.4)' : (btn.getAttribute('data-code') === 'S2' ? 'rgba(34,197,94,0.4)' : 'rgba(59,130,246,0.4)');
-                }
+                const isActive = code === activeCode;
+                btn.classList.toggle('is-active', isActive);
+                btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
             });
         }
 
@@ -590,18 +602,18 @@
                         }
                         if (hwSwitchAlert) {
                             hwSwitchAlert.innerHTML = `<span style="display: flex; align-items: center; gap: 8px;">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                                <span><b>Command Dispatched to ESP32!</b> Active hardware target set to <b>${data.active_sample.name}</b> (Target: <b>${targetPh} pH</b> · <b>${quality}</b>). The physical 16x2 LCD screen will update now.</span>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                <span><b>Command Dispatched to ESP32!</b> Active hardware target set to <b>${data.active_sample.name}</b> (Target: <b>${targetPh} pH</b> · <b>${quality}</b>). The physical 16&times;2 LCD screen will update now.</span>
                             </span>`;
                         }
                     } else {
                         if (hwSwitchAlert) {
-                            hwSwitchAlert.innerHTML = `<span style="color: #f87171;">⚠️ Failed to dispatch command: ${data.error || 'Server error'}</span>`;
+                            hwSwitchAlert.innerHTML = `<span style="color: #dc2626;">⚠️ Failed to dispatch command: ${data.error || 'Server error'}</span>`;
                         }
                     }
                 } catch (e) {
                     if (hwSwitchAlert) {
-                        hwSwitchAlert.innerHTML = `<span style="color: #f87171;">⚠️ Connection error: ${e.message}</span>`;
+                        hwSwitchAlert.innerHTML = `<span style="color: #dc2626;">⚠️ Connection error: ${e.message}</span>`;
                     }
                 } finally {
                     this.style.opacity = '1';
