@@ -721,12 +721,14 @@ class SoilSenseController extends Controller
     public static function getActiveSampleData(): array
     {
         return \Illuminate\Support\Facades\Cache::get('esp32_active_sample', [
-            'sample_code' => 'S1',
-            'sample_id'   => 'SS-2025-018',
-            'name'        => 'South plot — Bed 01',
-            'base_ph'     => 4.01,
-            'quality'     => 'ACIDIC',
-            'updated_at'  => now()->toIso8601String(),
+            'sample_code'   => 'S1',
+            'sample_id'     => 'SS-2025-018',
+            'name'          => 'South plot — Bed 01',
+            'base_ph'       => 4.01,
+            'base_moisture' => 48.0,
+            'quality'       => 'LOW',
+            'quality_label' => 'Low pH (Acidic)',
+            'updated_at'    => now()->toIso8601String(),
         ]);
     }
 
@@ -759,7 +761,7 @@ class SoilSenseController extends Controller
             ],
             'reading' => [
                 'ph' => $reading && $reading->ph !== null ? round($reading->ph, 2) : 6.86,
-                'moisture' => $reading && $reading->moisture !== null ? round($reading->moisture, 1) : 0,
+                'moisture' => $reading && $reading->moisture !== null ? round($reading->moisture, 1) : ($activeSample['base_moisture'] ?? 36.0),
                 'temperature' => $reading && $reading->temperature !== null ? round($reading->temperature, 1) : 25.0,
                 'recorded_at' => $reading?->recorded_at?->toIso8601String(),
                 'time_ago' => $reading ? $reading->recorded_at->diffForHumans() : 'Just now',
@@ -776,25 +778,31 @@ class SoilSenseController extends Controller
         $sequence = ['S1', 'S2', 'S3'];
         $samples = [
             'S1' => [
-                'sample_code' => 'S1',
-                'sample_id'   => 'SS-2025-018',
-                'name'        => 'South plot — Bed 01',
-                'base_ph'     => 4.01,
-                'quality'     => 'ACIDIC',
+                'sample_code'   => 'S1',
+                'sample_id'     => 'SS-2025-018',
+                'name'          => 'South plot — Bed 01',
+                'base_ph'       => 4.01,
+                'base_moisture' => 48.0,
+                'quality'       => 'LOW',
+                'quality_label' => 'Low pH (Acidic)',
             ],
             'S2' => [
-                'sample_code' => 'S2',
-                'sample_id'   => 'SS-2025-018',
-                'name'        => 'South plot — Bed 02',
-                'base_ph'     => 6.86,
-                'quality'     => 'OPTIMAL',
+                'sample_code'   => 'S2',
+                'sample_id'     => 'SS-2025-018',
+                'name'          => 'South plot — Bed 02',
+                'base_ph'       => 6.86,
+                'base_moisture' => 36.0,
+                'quality'       => 'GOOD',
+                'quality_label' => 'Good / Optimal',
             ],
             'S3' => [
-                'sample_code' => 'S3',
-                'sample_id'   => 'SS-2025-018',
-                'name'        => 'South plot — Bed 03',
-                'base_ph'     => 9.18,
-                'quality'     => 'ALKALINE',
+                'sample_code'   => 'S3',
+                'sample_id'     => 'SS-2025-018',
+                'name'          => 'South plot — Bed 03',
+                'base_ph'       => 9.18,
+                'base_moisture' => 24.0,
+                'quality'       => 'HIGH',
+                'quality_label' => 'High pH (Alkaline)',
             ],
         ];
 
@@ -831,25 +839,31 @@ class SoilSenseController extends Controller
     {
         $samples = [
             'S1' => [
-                'sample_code' => 'S1',
-                'sample_id'   => 'SS-2025-018',
-                'name'        => 'Sample 1: Acidic Peat',
-                'base_ph'     => 4.01,
-                'quality'     => 'ACIDIC',
+                'sample_code'   => 'S1',
+                'sample_id'     => 'SS-2025-018',
+                'name'          => 'South plot — Bed 01',
+                'base_ph'       => 4.01,
+                'base_moisture' => 48.0,
+                'quality'       => 'LOW',
+                'quality_label' => 'Low pH (Acidic)',
             ],
             'S2' => [
-                'sample_code' => 'S2',
-                'sample_id'   => 'SS-2025-018',
-                'name'        => 'Sample 2: Garden Loam',
-                'base_ph'     => 6.86,
-                'quality'     => 'OPTIMAL',
+                'sample_code'   => 'S2',
+                'sample_id'     => 'SS-2025-018',
+                'name'          => 'South plot — Bed 02',
+                'base_ph'       => 6.86,
+                'base_moisture' => 36.0,
+                'quality'       => 'GOOD',
+                'quality_label' => 'Good / Optimal',
             ],
             'S3' => [
-                'sample_code' => 'S3',
-                'sample_id'   => 'SS-2025-018',
-                'name'        => 'Sample 3: Chalky Clay',
-                'base_ph'     => 9.18,
-                'quality'     => 'ALKALINE',
+                'sample_code'   => 'S3',
+                'sample_id'     => 'SS-2025-018',
+                'name'          => 'South plot — Bed 03',
+                'base_ph'       => 9.18,
+                'base_moisture' => 24.0,
+                'quality'       => 'HIGH',
+                'quality_label' => 'High pH (Alkaline)',
             ],
         ];
 

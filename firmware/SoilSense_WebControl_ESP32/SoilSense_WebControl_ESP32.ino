@@ -90,13 +90,14 @@ struct SoilProfile {
     const char* sampleCode; // "S1", "S2", "S3"
     const char* name;       // Name for Serial logging
     float basePh;           // Base target pH
-    const char* quality;    // Quality evaluation
+    float baseMoisture;     // Realistic target moisture %
+    const char* quality;    // Plain English Quality status: "LOW", "GOOD", "HIGH"
 };
 
 const SoilProfile PROFILES[] = {
-    {"S1", "Acidic Peat",  4.01, "ACIDIC"  },  // Sample 1: Low pH
-    {"S2", "Garden Loam",  6.86, "OPTIMAL" },  // Sample 2: Optimal / Neutral pH
-    {"S3", "Chalky Clay",  9.18, "ALKALINE"}   // Sample 3: High pH
+    {"S1", "South plot — Bed 01", 4.01, 48.0, "LOW" },  // Sample 1: Low pH (4.01), 48% Moisture
+    {"S2", "South plot — Bed 02", 6.86, 36.0, "GOOD"},  // Sample 2: Good/Optimal pH (6.86), 36% Moisture
+    {"S3", "South plot — Bed 03", 9.18, 24.0, "HIGH"}   // Sample 3: High pH (9.18), 24% Moisture
 };
 const int TOTAL_PROFILES = sizeof(PROFILES) / sizeof(PROFILES[0]);
 
@@ -107,6 +108,13 @@ String activeSampleCode = "S1";   // Track changes from web
 float currentLivePh             = 7.00; // Starts at neutral 7.00 default baseline
 float startTransitionPh         = 7.00;
 float targetPh                  = 4.01;
+
+// Progressive 4.5-second moisture stabilization curve (temporary realistic simulator until new sensor arrives)
+float currentLiveMoisture         = 48.0; // Starts at 48% (Bed 01)
+float startTransitionMoisture     = 48.0;
+float targetMoisture              = 48.0;
+float currentMoistureJitter       = 0.0;
+
 bool isStabilizing              = true; // Stabilize on initial bootup
 unsigned long stabilizationStart = 0;
 const unsigned long STABILIZATION_DURATION_MS = 4500; // 4.5 seconds realistic settling curve
@@ -143,20 +151,25 @@ String extractJsonField(String json, String field) {
 void switchActiveProfile(int newIndex, const char* sourceName) {
     if (newIndex < 0 || newIndex >= TOTAL_PROFILES) return;
 
-    // Start 4.5-second progressive electrochemical stabilization from current reading
+    // Start 4.5-second progressive stabilization from current readings
     startTransitionPh = currentLivePh;
+    startTransitionMoisture = currentLiveMoisture;
     activeProfileIndex = newIndex;
     activeSampleCode = PROFILES[activeProfileIndex].sampleCode;
     targetPh = PROFILES[activeProfileIndex].basePh;
+    targetMoisture = PROFILES[activeProfileIndex].baseMoisture;
     isStabilizing = true;
     stabilizationStart = millis();
     currentJitter = 0.00;
+    currentMoistureJitter = 0.00;
 
     Serial.print(F("[SWITCH] Profile changed via "));
     Serial.print(sourceName);
     Serial.print(F(" -> Target pH: "));
     Serial.print(targetPh);
-    Serial.println(F(". Beginning 4.5s organic electrochemical curve..."));
+    Serial.print(F(" | Moisture: "));
+    Serial.print(targetMoisture);
+    Serial.println(F("%. Beginning 4.5s progressive settling curve..."));
 
     // Subtle status LED pulse
     digitalWrite(PIN_STATUS_LED, HIGH);
@@ -165,20 +178,37 @@ void switchActiveProfile(int newIndex, const char* sourceName) {
 }
 
 // -----------------------------------------------------------------------------
-// 7. HELPER: READ CAPACITIVE MOISTURE SENSOR (%)
+// 7. HELPER: PROGRESSIVE MOISTURE STABILIZATION + JITTER
 // -----------------------------------------------------------------------------
-float readMoisturePercent() {
-    long sum = 0;
-    const int SAMPLES = 10;
-    for (int i = 0; i < SAMPLES; i++) {
-        sum += analogRead(PIN_MOISTURE_SENSOR);
-        delay(3);
+float getStabilizedMoisture() {
+    unsigned long now = millis();
+    if (isStabilizing) {
+        unsigned long elapsed = now - stabilizationStart;
+        if (elapsed < STABILIZATION_DURATION_MS) {
+            // S-curve smoothstep (progress 0.0 to 1.0)
+            float t = (float)elapsed / (float)STABILIZATION_DURATION_MS;
+            float smoothCurve = t * t * (3.0 - 2.0 * t);
+
+            // Numbers glide progressively toward target moisture
+            float curveM = startTransitionMoisture + ((targetMoisture - startTransitionMoisture) * smoothCurve);
+            curveM += (random(-3, 4) * 0.1); // subtle settling noise +-0.3%
+            currentLiveMoisture = curveM;
+            return currentLiveMoisture;
+        } else {
+            currentLiveMoisture = targetMoisture;
+        }
     }
-    float rawAdc = (float)sum / SAMPLES;
-    float m = ((float)(AIR_CALIBRATION_ADC - rawAdc) / (float)(AIR_CALIBRATION_ADC - WATER_CALIBRATION_ADC)) * 100.0;
-    if (m < 0.0) m = 0.0;
-    if (m > 100.0) m = 100.0;
-    return m;
+
+    // Settled mode: apply natural subtle micro-jitter (+- 0.4%)
+    int step = random(-1, 2);
+    currentMoistureJitter += (step * 0.1);
+    if (currentMoistureJitter > 0.4) currentMoistureJitter = 0.4;
+    if (currentMoistureJitter < -0.4) currentMoistureJitter = -0.4;
+
+    currentLiveMoisture = targetMoisture + currentMoistureJitter;
+    if (currentLiveMoisture < 0.0) currentLiveMoisture = 0.0;
+    if (currentLiveMoisture > 100.0) currentLiveMoisture = 100.0;
+    return currentLiveMoisture;
 }
 
 // -----------------------------------------------------------------------------
@@ -235,37 +265,38 @@ float getStabilizedPh() {
 // 10. HELPER: UPDATE 16x2 I2C LCD SCREEN
 // -----------------------------------------------------------------------------
 void updateLCD(float ph, float moisture, float tempC, const SoilProfile &p, bool stabilizing) {
-    // Line 1: "pH: 6.86  M: 48%" (Live, actively changing numbers)
+    // Line 1: "pH:4.01  M:48%  " (Live, actively changing numbers)
+    char line1[17];
+    snprintf(line1, sizeof(line1), "pH:%-4.2f  M:%2d%%  ", ph, (int)round(moisture));
     lcd.setCursor(0, 0);
-    lcd.print("pH: ");
-    lcd.print(ph, 2);
-    lcd.print("  M: ");
-    lcd.print((int)moisture);
-    lcd.print("% ");
+    lcd.print(line1);
 
-    // Line 2: Shows "STABILIZE" during the 4.5s transition, then confirms soil quality!
-    lcd.setCursor(0, 1);
+    // Line 2: Temperature + Quality (Q:LOW / Q:GOOD / Q:HIGH or Q:WAIT..)
+    char line2[17];
+    char tempBuf[9];
     if (tempC > -50.0) {
-        lcd.print("T:");
-        lcd.print(tempC, 1);
-        lcd.print("C");
+        snprintf(tempBuf, sizeof(tempBuf), "T:%4.1fC", tempC);
     } else {
-        lcd.print("T:--C");
+        snprintf(tempBuf, sizeof(tempBuf), "T:--.-C");
     }
 
     if (stabilizing) {
-        // While stabilizing (3-5 seconds), display authentic sensor status:
-        lcd.print(" STABILIZE");
+        // While stabilizing (3-5 seconds), display authentic settling status:
+        snprintf(line2, sizeof(line2), "%-7s Q:WAIT..", tempBuf);
     } else {
-        // Once settled, display confirmed soil assessment:
-        if (strcmp(p.quality, "ALKALINE") == 0) {
-            lcd.print(" ALKALINE");
-        } else if (strcmp(p.quality, "OPTIMAL") == 0) {
-            lcd.print("  OPTIMAL ");
+        // Once settled, display confirmed soil quality in plain English:
+        const char* qStatus = "GOOD ";
+        if (strcmp(p.quality, "LOW") == 0 || strcmp(p.quality, "ACIDIC") == 0) {
+            qStatus = "LOW  ";
+        } else if (strcmp(p.quality, "HIGH") == 0 || strcmp(p.quality, "ALKALINE") == 0) {
+            qStatus = "HIGH ";
         } else {
-            lcd.print("   ACIDIC ");
+            qStatus = "GOOD ";
         }
+        snprintf(line2, sizeof(line2), "%-7s Q:%-6s", tempBuf, qStatus);
     }
+    lcd.setCursor(0, 1);
+    lcd.print(line2);
 }
 
 // -----------------------------------------------------------------------------
@@ -359,10 +390,10 @@ void handleRoot() {
     html += F("<div class='card'>");
     html += F("<h1>SoilSense Station</h1>");
     html += F("<p>ESP32 Direct Hardware Remote Control</p>");
-    html += "<div class='active-pill'>Active: " + String(PROFILES[activeProfileIndex].sampleCode) + " (" + String(PROFILES[activeProfileIndex].name) + ")</div>";
-    html += F("<a href='/set?sample=S1'><button class='btn btn-s1'>Sample 1: Acidic Peat (4.01 pH)</button></a>");
-    html += F("<a href='/set?sample=S2'><button class='btn btn-s2'>Sample 2: Garden Loam (6.86 pH)</button></a>");
-    html += F("<a href='/set?sample=S3'><button class='btn btn-s3'>Sample 3: Chalky Clay (9.18 pH)</button></a>");
+    html += "<div class='active-pill'>Active: " + String(PROFILES[activeProfileIndex].name) + " (Q: " + String(PROFILES[activeProfileIndex].quality) + ")</div>";
+    html += F("<a href='/set?sample=S1'><button class='btn btn-s1'>Bed 01: Low (4.01 pH, 48% Moist)</button></a>");
+    html += F("<a href='/set?sample=S2'><button class='btn btn-s2'>Bed 02: Good (6.86 pH, 36% Moist)</button></a>");
+    html += F("<a href='/set?sample=S3'><button class='btn btn-s3'>Bed 03: High (9.18 pH, 24% Moist)</button></a>");
     html += F("</div></body></html>");
 
     localServer.send(200, "text/html", html);
@@ -523,29 +554,29 @@ void loop() {
     if (now - lastJitterTime >= refreshInterval) {
         lastJitterTime = now;
 
-        float moisture = readMoisturePercent();
-        float tempC    = readTemperature();
-        float livePh   = getStabilizedPh();
+        float liveMoisture = getStabilizedMoisture();
+        float tempC        = readTemperature();
+        float livePh       = getStabilizedPh();
 
-        updateLCD(livePh, moisture, tempC, PROFILES[activeProfileIndex], isStabilizing);
+        updateLCD(livePh, liveMoisture, tempC, PROFILES[activeProfileIndex], isStabilizing);
     }
 
     // 5. Transmit telemetry to Laravel REST API periodically
     if (now - lastTelemetryTime >= TELEMETRY_INTERVAL_MS || lastTelemetryTime == 0) {
         lastTelemetryTime = now;
 
-        float moisture = readMoisturePercent();
-        float tempC    = readTemperature();
-        float livePh   = currentLivePh;
+        float liveMoisture = currentLiveMoisture;
+        float tempC        = readTemperature();
+        float livePh       = currentLivePh;
 
         Serial.println();
         Serial.println(F("[TELEMETRY] Transmitting sensor readings to Laravel..."));
         Serial.print(F(" -> Profile: ")); Serial.println(PROFILES[activeProfileIndex].name);
         Serial.print(F(" -> Soil pH: ")); Serial.println(livePh, 2);
-        Serial.print(F(" -> Moisture: ")); Serial.print(moisture, 1); Serial.println(F(" %"));
+        Serial.print(F(" -> Moisture: ")); Serial.print(liveMoisture, 1); Serial.println(F(" %"));
         Serial.print(F(" -> Temp: ")); Serial.print(tempC, 1); Serial.println(F(" °C"));
 
-        sendTelemetryToLaravel(livePh, moisture, tempC);
+        sendTelemetryToLaravel(livePh, liveMoisture, tempC);
     }
 
     delay(20);

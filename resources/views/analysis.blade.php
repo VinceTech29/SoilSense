@@ -4,7 +4,7 @@
     @php
         $initialMethod = old('testing_method', 'prototype_sensor');
         $isManualInitial = $initialMethod === 'manual_entry';
-        $initialDemo = old('is_demo', $isManualInitial ? '0' : '1');
+        $initialDemo = (string) old('is_demo', '0') === '1';
     @endphp
 
     <div class="page-title">
