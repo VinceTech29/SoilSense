@@ -182,6 +182,7 @@ class SensorReadingApiController extends Controller
                     'status' => $assessment?->status ?? 'pending_sufficient_telemetry',
                     'summary' => $assessment?->summary,
                 ],
+                'active_sample' => \App\Http\Controllers\SoilSenseController::getActiveSampleData(),
             ],
         ], Response::HTTP_CREATED);
     }

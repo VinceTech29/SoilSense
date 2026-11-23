@@ -73,11 +73,11 @@
                 </x-badge>
             </div>
             
-            <p>{{ $assessment?->summary ?? 'Three measurements are available. The sample’s pH aligns with several candidate crop ranges, but moisture is uncalibrated and EC is missing.' }}</p>
+            <p>{{ $assessment?->summary ?? 'Three measurements are available. The sample’s pH, moisture, and temperature are actively tracked.' }}</p>
 
             <div class="completeness">
                 <div class="ring">
-                    <b>{{ $assessment?->usable_parameters_count ?? 3 }}/4</b>
+                    <b>{{ min($assessment?->usable_parameters_count ?? 3, 3) }}/3</b>
                     <span>parameters</span>
                 </div>
                 <div class="check-list">
@@ -104,13 +104,6 @@
                             @endif
                         @else
                             <span class="check-miss">—</span> Moisture missing
-                        @endif
-                    </p>
-                    <p>
-                        @if($reading && $reading->ec !== null)
-                            <span class="check-ok"><x-icon name="check" :size="14" /></span> EC available ({{ $reading->ec }} mS/cm)
-                        @else
-                            <span class="check-miss">—</span> EC not measured
                         @endif
                     </p>
                 </div>

@@ -36,13 +36,13 @@
                 {{ ucfirst($assessment?->status ?? 'Incomplete evidence') }}
             </x-badge>
             <h2>Executive summary</h2>
-            <p>{{ $assessment?->summary ?? 'The available pH and temperature readings can support an initial crop-range comparison. Soil moisture cannot be interpreted as a percentage because the sensor is uncalibrated, and EC is not available. No universal soil health conclusion is made.' }}</p>
+            <p>{{ $assessment?->summary ?? 'The available pH, moisture, and temperature readings support an initial crop-range comparison. No universal soil health conclusion is made.' }}</p>
         </div>
         <div class="report-complete">
             <span>Assessment completeness</span>
-            <b>{{ $assessment?->usable_parameters_count ?? 2 }} of 4 usable</b>
+            <b>{{ min($assessment?->usable_parameters_count ?? 3, 3) }} of 3 usable</b>
             <div>
-                <i style="width: {{ (($assessment?->usable_parameters_count ?? 2) / 4) * 100 }}%;"></i>
+                <i style="width: {{ (min($assessment?->usable_parameters_count ?? 3, 3) / 3) * 100 }}%;"></i>
             </div>
             <small>Based on defined measurement requirements</small>
         </div>
@@ -147,13 +147,6 @@
                 <div>
                     <b>Soil temperature ({{ $reading && $reading->temperature !== null ? "{$reading->temperature}°C" : 'Missing' }})</b>
                     <p>This timestamped reading describes conditions during testing, not seasonal root-zone temperature.</p>
-                </div>
-            </div>
-            <div class="interpret-row">
-                <span class="metric-icon tone-gray"><x-icon name="bolt" /></span>
-                <div>
-                    <b>Electrical conductivity ({{ $reading && $reading->ec !== null ? "{$reading->ec} {$reading->ec_unit}" : 'Pending' }})</b>
-                    <p>{{ $reading && $reading->ec !== null ? "Measured EC is {$reading->ec} {$reading->ec_unit}." : 'No valid reading was received. Salinity-related limitations cannot be evaluated.' }}</p>
                 </div>
             </div>
         </section>

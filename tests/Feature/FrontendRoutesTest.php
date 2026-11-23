@@ -88,4 +88,28 @@ class FrontendRoutesTest extends TestCase
         $response->assertSee('Settings');
         $response->assertSee('User profile');
     }
+
+    public function test_device_active_sample_get_and_set(): void
+    {
+        $getResponse = $this->getJson('/api/v1/device/active-sample');
+        $getResponse->assertStatus(200)
+            ->assertJsonStructure([
+                'success',
+                'active_sample' => ['sample_code', 'sample_id', 'name', 'base_ph', 'quality'],
+            ]);
+
+        $setResponse = $this->postJson('/api/v1/device/active-sample', [
+            'sample_code' => 'S2',
+        ]);
+        $setResponse->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active_sample.sample_code', 'S2')
+            ->assertJsonPath('active_sample.quality', 'OPTIMAL');
+
+        $invalidResponse = $this->postJson('/api/v1/device/active-sample', [
+            'sample_code' => 'INVALID',
+        ]);
+        $invalidResponse->assertStatus(422)
+            ->assertJsonPath('success', false);
+    }
 }

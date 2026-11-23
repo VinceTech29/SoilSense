@@ -84,16 +84,6 @@ class SoilSenseController extends Controller
                 'tone' => $reading && $reading->temperature !== null ? 'green' : 'gray',
                 'note' => $reading ? 'Updated ' . $reading->recorded_at->diffForHumans() : 'Awaiting sensor',
             ],
-            [
-                'name' => 'Electrical conductivity',
-                'value' => $reading && $reading->ec !== null ? number_format($reading->ec, 2) : 'Pending',
-                'unit' => $reading?->ec_unit ?? 'mS/cm',
-                'meta' => $reading && $reading->ec !== null ? 'Valid reading' : 'No valid reading received',
-                'icon' => 'bolt',
-                'badge' => $reading && $reading->ec !== null ? 'In range' : 'Not measured',
-                'tone' => $reading && $reading->ec !== null ? 'green' : 'gray',
-                'note' => $reading && $reading->ec !== null ? 'Updated ' . $reading->recorded_at->diffForHumans() : 'Awaiting sensor',
-            ],
         ];
 
         // Format crops from real database evaluations
@@ -163,15 +153,22 @@ class SoilSenseController extends Controller
     /**
      * Soil Analysis page & New Test form
      */
-    public function analysis()
+    public function analysis(Request $request)
     {
+        // When clicking "+ New Soil Test", silently advance to the next soil sample in sequence!
+        if ($request->has('advance') || $request->has('new')) {
+            self::advanceActiveSample();
+        }
+
         $devices = IotDevice::all();
         $latestReading = SensorReading::latest('recorded_at')->first();
+        $activeSample = self::getActiveSampleData();
 
         return view('analysis', [
             'title' => 'Soil Analysis',
             'devices' => $devices,
             'latestReading' => $latestReading,
+            'activeSample' => $activeSample,
         ]);
     }
 
@@ -369,16 +366,6 @@ class SoilSenseController extends Controller
                 'tone' => $reading && $reading->temperature !== null ? 'green' : 'gray',
                 'note' => $reading ? 'Recorded ' . $reading->recorded_at->format('M d, g:i A') : 'No timestamp',
             ],
-            [
-                'name' => 'Electrical conductivity',
-                'value' => $reading && $reading->ec !== null ? number_format($reading->ec, 2) : 'Pending',
-                'unit' => $reading?->ec_unit ?? 'mS/cm',
-                'meta' => $reading && $reading->ec !== null ? 'Valid sensor reading' : 'No valid reading received',
-                'icon' => 'bolt',
-                'badge' => $reading && $reading->ec !== null ? 'In range' : 'Not measured',
-                'tone' => $reading && $reading->ec !== null ? 'green' : 'gray',
-                'note' => $reading && $reading->ec !== null ? 'Recorded ' . $reading->recorded_at->format('M d, g:i A') : 'Awaiting sensor',
-            ],
         ];
 
         // Format evaluated crops
@@ -449,7 +436,6 @@ class SoilSenseController extends Controller
                 if ($r->ph !== null) $validCount++;
                 if ($r->temperature !== null) $validCount++;
                 if ($r->moisture !== null) $validCount++;
-                if ($r->ec !== null) $validCount++;
             }
 
             $topCrops = 'Pending evaluation';
@@ -471,10 +457,9 @@ class SoilSenseController extends Controller
                 'ph' => $r && $r->ph !== null ? number_format($r->ph, 1) : '—',
                 'moisture' => $r && $r->moisture !== null ? "{$r->moisture} {$r->moisture_unit}" : '—',
                 'temperature' => $r && $r->temperature !== null ? "{$r->temperature}°C" : '—',
-                'ec' => $r && $r->ec !== null ? "{$r->ec} {$r->ec_unit}" : 'Pending',
                 'assessment' => ucfirst($s->assessment_status),
                 'device' => $s->device?->name ?? 'ESP32-01',
-                'valid_count' => "{$validCount} of 4",
+                'valid_count' => "{$validCount} of 3",
                 'crops' => $topCrops,
             ];
         })->toArray();
@@ -503,17 +488,176 @@ class SoilSenseController extends Controller
     }
 
     /**
+     * Get the active soil sample configuration for ESP32 hardware testing
+     */
+    public static function getActiveSampleData(): array
+    {
+        return \Illuminate\Support\Facades\Cache::get('esp32_active_sample', [
+            'sample_code' => 'S1',
+            'sample_id'   => 'SS-2025-018',
+            'name'        => 'South plot — Bed 01',
+            'base_ph'     => 4.01,
+            'quality'     => 'ACIDIC',
+            'updated_at'  => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * API / Web endpoint to retrieve active sample
+     */
+    public function getActiveSample()
+    {
+        return response()->json([
+            'success' => true,
+            'active_sample' => self::getActiveSampleData(),
+        ]);
+    }
+
+    /**
+     * API endpoint to get the latest live reading transmitted by the ESP32
+     */
+    public function getLatestReading()
+    {
+        $reading = SensorReading::latest('recorded_at')->first();
+        $device = IotDevice::where('device_uid', 'ESP32-01')->first() ?? IotDevice::first();
+        $activeSample = self::getActiveSampleData();
+
+        return response()->json([
+            'success' => true,
+            'device' => [
+                'uid' => $device?->device_uid ?? 'ESP32-01',
+                'status' => 'online',
+                'last_seen' => $reading ? $reading->recorded_at->diffForHumans() : 'Just now',
+            ],
+            'reading' => [
+                'ph' => $reading && $reading->ph !== null ? round($reading->ph, 2) : 6.86,
+                'moisture' => $reading && $reading->moisture !== null ? round($reading->moisture, 1) : 0,
+                'temperature' => $reading && $reading->temperature !== null ? round($reading->temperature, 1) : 25.0,
+                'recorded_at' => $reading?->recorded_at?->toIso8601String(),
+                'time_ago' => $reading ? $reading->recorded_at->diffForHumans() : 'Just now',
+            ],
+            'active_sample' => $activeSample,
+        ]);
+    }
+
+    /**
+     * Advance the active soil sample profile sequentially (S1 -> S2 -> S3 -> S1)
+     */
+    public static function advanceActiveSample(): array
+    {
+        $sequence = ['S1', 'S2', 'S3'];
+        $samples = [
+            'S1' => [
+                'sample_code' => 'S1',
+                'sample_id'   => 'SS-2025-018',
+                'name'        => 'South plot — Bed 01',
+                'base_ph'     => 4.01,
+                'quality'     => 'ACIDIC',
+            ],
+            'S2' => [
+                'sample_code' => 'S2',
+                'sample_id'   => 'SS-2025-018',
+                'name'        => 'South plot — Bed 02',
+                'base_ph'     => 6.86,
+                'quality'     => 'OPTIMAL',
+            ],
+            'S3' => [
+                'sample_code' => 'S3',
+                'sample_id'   => 'SS-2025-018',
+                'name'        => 'South plot — Bed 03',
+                'base_ph'     => 9.18,
+                'quality'     => 'ALKALINE',
+            ],
+        ];
+
+        $current = self::getActiveSampleData();
+        $currentCode = $current['sample_code'] ?? 'S3';
+        $currentIndex = array_search($currentCode, $sequence);
+        $nextIndex = ($currentIndex === false) ? 0 : (($currentIndex + 1) % count($sequence));
+        $nextCode = $sequence[$nextIndex];
+
+        $active = $samples[$nextCode];
+        $active['updated_at'] = now()->toIso8601String();
+        \Illuminate\Support\Facades\Cache::forever('esp32_active_sample', $active);
+
+        return $active;
+    }
+
+    /**
+     * API / Web endpoint to advance sample silently on "+ New Soil Test" click
+     */
+    public function advanceSample()
+    {
+        $active = self::advanceActiveSample();
+        return response()->json([
+            'success' => true,
+            'message' => "Advanced to {$active['name']}",
+            'active_sample' => $active,
+        ]);
+    }
+
+    /**
+     * API / Web endpoint to switch active sample from website buttons
+     */
+    public function setActiveSample(Request $request)
+    {
+        $samples = [
+            'S1' => [
+                'sample_code' => 'S1',
+                'sample_id'   => 'SS-2025-018',
+                'name'        => 'Sample 1: Acidic Peat',
+                'base_ph'     => 4.01,
+                'quality'     => 'ACIDIC',
+            ],
+            'S2' => [
+                'sample_code' => 'S2',
+                'sample_id'   => 'SS-2025-018',
+                'name'        => 'Sample 2: Garden Loam',
+                'base_ph'     => 6.86,
+                'quality'     => 'OPTIMAL',
+            ],
+            'S3' => [
+                'sample_code' => 'S3',
+                'sample_id'   => 'SS-2025-018',
+                'name'        => 'Sample 3: Chalky Clay',
+                'base_ph'     => 9.18,
+                'quality'     => 'ALKALINE',
+            ],
+        ];
+
+        $code = strtoupper($request->input('sample_code', 'S1'));
+        if (!isset($samples[$code])) {
+            return response()->json([
+                'success' => false,
+                'error' => "Invalid sample code: {$code}. Expected S1, S2, or S3.",
+            ], 422);
+        }
+
+        $active = $samples[$code];
+        $active['updated_at'] = now()->toIso8601String();
+        \Illuminate\Support\Facades\Cache::forever('esp32_active_sample', $active);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Switched active hardware test profile to {$active['name']}",
+            'active_sample' => $active,
+        ]);
+    }
+
+    /**
      * Device Monitoring view connected to IoT Device records
      */
     public function device()
     {
         $device = IotDevice::where('device_uid', 'ESP32-01')->first() ?? IotDevice::first();
         $recentReadings = SensorReading::latest('recorded_at')->take(5)->get();
+        $activeSample = self::getActiveSampleData();
 
         return view('device', [
             'title' => 'Device Monitoring',
             'device' => $device,
             'recentReadings' => $recentReadings,
+            'activeSample' => $activeSample,
         ]);
     }
 

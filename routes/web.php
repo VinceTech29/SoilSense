@@ -20,6 +20,8 @@ Route::get('/report/{id?}', [SoilSenseController::class, 'report'])->name('repor
 Route::get('/history', [SoilSenseController::class, 'history'])->name('history');
 Route::get('/reports', [SoilSenseController::class, 'reports'])->name('reports');
 Route::get('/device', [SoilSenseController::class, 'device'])->name('device');
+Route::get('/device/active-sample', [SoilSenseController::class, 'getActiveSample'])->name('device.active_sample.get');
+Route::post('/device/active-sample', [SoilSenseController::class, 'setActiveSample'])->name('device.active_sample.set');
 
 // Settings Module Routes
 Route::get('/settings', [SettingsController::class, 'index'])->name('settings');

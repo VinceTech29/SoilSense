@@ -12,7 +12,8 @@ This guide is designed for when your physical hardware arrives. It details the r
 | **Soil pH Sensor** | Analog pH Sensor kit (pH-4502C or DFRobot SEN0161) | Analog (0–3.3V) | 5V / 3.3V |
 | **Soil Moisture Sensor** | Capacitive Soil Moisture Sensor v1.2 / v2.0 | Analog (0–3.3V) | 3.3V |
 | **Soil Temperature Sensor**| DS18B20 Waterproof Probe | OneWire (Digital) | 3.3V – 5.0V |
-| **Soil EC Sensor** | Analog Electrical Conductivity Sensor Probe | Analog (0–3.3V) | 3.3V – 5.0V |
+| **Soil EC Sensor (Optional)** | Analog Electrical Conductivity Sensor Probe | Analog (0–3.3V) | 3.3V – 5.0V |
+| **LCD Display Module** | 16x2 / 20x4 LCD with I2C Backpack (PCF8574) | I2C (SDA/SCL) | 5V (VIN) |
 | **Resistor** | 4.7 kΩ (Yellow-Purple-Red) | Pull-up | DS18B20 Data Line |
 | **Breadboard & Jumpers**| Standard breadboard with male-to-male & male-to-female wires | — | — |
 
@@ -36,9 +37,13 @@ This guide is designed for when your physical hardware arrives. It details the r
 | **DS18B20 Temperature**| VDD (Red) | 3V3 | Power |
 | | GND (Black) | GND | Common ground |
 | | DATA (Yellow/White)| **GPIO 4** | OneWire bus (Connect 4.7kΩ between VDD & DATA) |
-| **Analog EC Probe** | VCC | 3V3 or 5V | Power |
+| **Analog EC Probe (Optional)** | VCC | 3V3 or 5V | Power |
 | | GND | GND | Common ground |
 | | AOUT | **GPIO 32** (ADC1_CH4) | EC voltage signal |
+| **I2C LCD (16x2 / 20x4)** | VCC | 5V (VIN) | Display backlight & power (USB 5V rail) |
+| | GND | GND | Common ground |
+| | SDA | **GPIO 21** | I2C Data line |
+| | SCL | **GPIO 22** | I2C Clock line |
 
 > [!NOTE]
 > On the ESP32, **ADC1** pins (GPIO 32, 33, 34, 35, 36, 39) must be used for analog sensors. **ADC2** pins cannot be used for analog readings while WiFi is active.
@@ -58,6 +63,7 @@ This guide is designed for when your physical hardware arrives. It details the r
    - Search and install:
      - `OneWire` by Jim Studt, Paul Stoffregen
      - `DallasTemperature` by Miles Burton
+     - `LiquidCrystal I2C` by Frank de Brabander (or standard LiquidCrystal_I2C)
 4. **Open Firmware**:
    - Open `firmware/SoilSense_ESP32.ino`.
 5. **Configure WiFi and Server URL**:

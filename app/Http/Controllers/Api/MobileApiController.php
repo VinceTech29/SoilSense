@@ -288,7 +288,12 @@ class MobileApiController extends Controller
     public function cropDetail(string $name): JsonResponse
     {
         $crop = CropProfile::with('requirements')
-            ->where('name', 'like', $name)
+            ->where(function ($query) use ($name) {
+                if (is_numeric($name)) {
+                    $query->where('id', (int) $name);
+                }
+                $query->orWhere('name', 'like', $name);
+            })
             ->first();
 
         if (!$crop) {

@@ -36,5 +36,15 @@ Route::prefix('v1')->group(function () {
         Route::get('/devices', [MobileApiController::class, 'devices'])->name('api.v1.mobile.devices');
         Route::get('/devices/{id}', [MobileApiController::class, 'showDevice'])->name('api.v1.mobile.devices.show');
     });
+
+    // ESP32 Hardware Remote Control Endpoints
+    Route::get('/device/active-sample', [\App\Http\Controllers\SoilSenseController::class, 'getActiveSample'])
+        ->name('api.v1.device.active_sample.get');
+    Route::post('/device/active-sample', [\App\Http\Controllers\SoilSenseController::class, 'setActiveSample'])
+        ->name('api.v1.device.active_sample.set');
+    Route::post('/device/advance-sample', [\App\Http\Controllers\SoilSenseController::class, 'advanceSample'])
+        ->name('api.v1.device.advance_sample.set');
+    Route::get('/device/latest-reading', [\App\Http\Controllers\SoilSenseController::class, 'getLatestReading'])
+        ->name('api.v1.device.latest_reading');
 });
 

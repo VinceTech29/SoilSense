@@ -5,11 +5,12 @@
  * ==============================================================================
  * Compatible Boards: ESP32 DevKit V1 (30-pin / 38-pin), NodeMCU-32S, ESP32-WROOM-32
  * 
- * Hardware Sensors Supported:
+ * Hardware Sensors & Modules Supported:
  * 1. Soil pH Sensor (Analog, e.g. DFRobot Gravity SEN0161 or pH-4502C) -> GPIO 34 (ADC1_CH6)
  * 2. Capacitive Soil Moisture Sensor v1.2 / v2.0 -> GPIO 35 (ADC1_CH7)
  * 3. DS18B20 Waterproof Temperature Sensor (OneWire) -> GPIO 4 (with 4.7k pullup)
- * 4. Electrical Conductivity (EC) Sensor (Analog) -> GPIO 32 (ADC1_CH4)
+ * 4. Electrical Conductivity (EC) Sensor (Analog, optional) -> GPIO 32 (ADC1_CH4)
+ * 5. 16x2 / 20x4 I2C LCD Display Module (PCF8574) -> SDA: GPIO 21, SCL: GPIO 22
  * 
  * Communication Protocol:
  * HTTP POST application/json with Bearer Token Authentication to Laravel Backend
@@ -18,6 +19,8 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
@@ -43,13 +46,18 @@ const unsigned long TELEMETRY_INTERVAL_MS = 30000;
 unsigned long lastTelemetryTime = 0;
 
 // -----------------------------------------------------------------------------
-// 2. PIN DEFINITIONS (ESP32 ADC1 Pins only, ADC2 is disabled when WiFi is on)
+// 2. PIN DEFINITIONS & I2C DISPLAY SETUP
 // -----------------------------------------------------------------------------
+// ESP32 ADC1 Pins only (ADC2 is disabled when WiFi is on)
 #define PIN_PH_SENSOR          34   // Analog Input (ADC1_CH6)
 #define PIN_MOISTURE_SENSOR    35   // Analog Input (ADC1_CH7)
 #define PIN_EC_SENSOR          32   // Analog Input (ADC1_CH4)
 #define PIN_ONEWIRE_TEMP       4    // Digital I/O with 4.7kΩ pull-up resistor
 #define PIN_STATUS_LED         2    // On-board blue LED
+
+// Hardware I2C Pins (ESP32 default: SDA = GPIO 21, SCL = GPIO 22)
+// Initialize 16x2 LCD at address 0x27 (use 0x3F if 0x27 doesn't display)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // Setup OneWire & Dallas Temperature
 OneWire oneWire(PIN_ONEWIRE_TEMP);
@@ -139,6 +147,50 @@ float readSoilEC(float tempC) {
     return ec;
 }
 
+// Evaluate overall soil quality status based on pH, moisture, and temperature
+const char* evaluateSoilQuality(float ph, float moisture, float tempC) {
+    if (ph < 5.5) return "ACIDIC";
+    if (ph > 8.0) return "ALKALINE";
+    if (moisture < 25.0) return "TOO DRY";
+    if (moisture > 85.0) return "WATERLOG";
+    if (ph >= 6.0 && ph <= 7.2 && moisture >= 40.0 && moisture <= 70.0) {
+        return "OPTIMAL";
+    }
+    return "GOOD";
+}
+
+// Update 16x2 I2C LCD Display
+void updateLCDDisplay(float ph, float moisture, float tempC, float ec, const char* quality) {
+    lcd.clear();
+    
+    // Line 1: "pH:6.85 M:48%"
+    lcd.setCursor(0, 0);
+    lcd.print("pH:");
+    lcd.print(ph, 2);
+    lcd.print(" M:");
+    lcd.print((int)moisture);
+    lcd.print("%");
+
+    // Line 2: "T:24C EC:0.8 Q:OPT" or "T:24.5C Q:GOOD"
+    lcd.setCursor(0, 1);
+    if (tempC > -50.0) {
+        lcd.print("T:");
+        lcd.print((int)tempC);
+        lcd.print("C ");
+    } else {
+        lcd.print("T:-- ");
+    }
+
+    if (ec > 0.05) {
+        lcd.print("E:");
+        lcd.print(ec, 1);
+        lcd.print(" ");
+    }
+
+    lcd.print("Q:");
+    lcd.print(quality);
+}
+
 // -----------------------------------------------------------------------------
 // 5. HTTP TELEMETRY TRANSMISSION
 // -----------------------------------------------------------------------------
@@ -224,6 +276,15 @@ void setup() {
     pinMode(PIN_STATUS_LED, OUTPUT);
     digitalWrite(PIN_STATUS_LED, LOW);
 
+    // Initialize I2C LCD Display (SDA = GPIO 21, SCL = GPIO 22)
+    Wire.begin(21, 22);
+    lcd.init();
+    lcd.backlight();
+    lcd.setCursor(0, 0);
+    lcd.print("SoilSense Station");
+    lcd.setCursor(0, 1);
+    lcd.print("Connecting WiFi.");
+
     // Initialize 12-bit ADC and set attenuation (0-3.3V range)
     analogReadResolution(12);
     analogSetAttenuation(ADC_11db);
@@ -249,11 +310,18 @@ void setup() {
         Serial.println();
         Serial.print(F("[WIFI] Connected! Assigned IP: "));
         Serial.println(WiFi.localIP());
+
+        lcd.setCursor(0, 1);
+        lcd.print("WiFi: Connected ");
     } else {
         digitalWrite(PIN_STATUS_LED, LOW);
         Serial.println();
         Serial.println(F("[WIFI] Connection failed. Telemetry will retry periodically."));
+
+        lcd.setCursor(0, 1);
+        lcd.print("WiFi: Offline   ");
     }
+    delay(1500);
 }
 
 void loop() {
@@ -270,12 +338,18 @@ void loop() {
         float moisture = readSoilMoisturePercent();
         float tempC = readSoilTemperature();
         float ec = readSoilEC(tempC);
+        const char* quality = evaluateSoilQuality(ph, moisture, tempC);
 
         Serial.print(F(" -> Soil pH: ")); Serial.println(ph, 2);
         Serial.print(F(" -> Moisture: ")); Serial.print(moisture, 1); Serial.println(F(" %"));
         Serial.print(F(" -> Temperature: ")); Serial.print(tempC, 1); Serial.println(F(" °C"));
         Serial.print(F(" -> Electrical Conductivity: ")); Serial.print(ec, 2); Serial.println(F(" mS/cm"));
+        Serial.print(F(" -> Soil Quality: ")); Serial.println(quality);
 
+        // Update physical LCD display
+        updateLCDDisplay(ph, moisture, tempC, ec, quality);
+
+        // Send telemetry payload to backend
         sendTelemetry(ph, moisture, tempC, ec);
     }
 

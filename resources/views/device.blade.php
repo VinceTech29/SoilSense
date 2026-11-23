@@ -82,17 +82,6 @@
                 <span><small>Calibration</small><b>Status unavailable</b></span>
                 <x-icon name="chevron" :size="16" />
             </div>
-
-            <div class="sensor-row">
-                <span class="sensor-status gray"></span>
-                <div>
-                    <b>EC probe</b>
-                    <small>Output unit: mS/cm</small>
-                </div>
-                <x-badge tone="gray">No valid data</x-badge>
-                <span><small>Calibration</small><b>Status unavailable</b></span>
-                <x-icon name="chevron" :size="16" />
-            </div>
         </section>
 
         <!-- API Endpoint Communication Panel -->
@@ -116,6 +105,60 @@
             <p><span>Hardware link</span><b>ESP32 HTTP Client</b></p>
         </aside>
     </div>
+
+    <!-- Live ESP32 Hardware Remote Control Panel -->
+    <section class="card hardware-control-card" style="margin-bottom: 24px; border: 1.5px solid #22c55e; background: linear-gradient(135deg, rgba(34,197,94,0.06) 0%, rgba(15,23,42,0.85) 100%);">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+            <div>
+                <span class="section-kicker" style="color: #22c55e; font-weight: 700;">Two-Way IoT Hardware Control</span>
+                <h2 style="font-size: 1.25rem; font-weight: 700; margin: 4px 0;">ESP32 Soil Sample Remote Switcher</h2>
+                <p style="font-size: 0.85rem; color: #94a3b8; margin: 0;">Click a soil sample below to remotely switch the active testing profile on your physical ESP32 and 16x2 LCD screen over WiFi.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span id="hwSyncStatusBadge" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: rgba(34,197,94,0.18); color: #4ade80; border: 1px solid rgba(34,197,94,0.3);">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e;"></span>
+                    Active on ESP32: <b id="currentActiveSampleText" style="margin-left: 4px;">{{ $activeSample['sample_code'] ?? 'S1' }} ({{ $activeSample['name'] ?? 'Sample 1: Acidic Peat' }})</b>
+                </span>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px;">
+            <!-- Sample 1 Button -->
+            <button type="button" class="hw-sample-btn" data-code="S1" data-ph="4.01" data-quality="ACIDIC"
+                style="display: flex; flex-direction: column; align-items: flex-start; padding: 16px; border-radius: 12px; border: 1.5px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08); text-align: left; cursor: pointer; transition: all 0.2s ease; position: relative;">
+                <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 6px;">
+                    <span style="font-size: 0.75rem; font-weight: 700; color: #f87171; text-transform: uppercase;">Sample 1 (Acidic)</span>
+                    <span style="font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: rgba(239,68,68,0.25); color: #fca5a5;">Target: 4.01 pH</span>
+                </div>
+                <b style="font-size: 1.05rem; color: #fff; margin-bottom: 2px;">Acidic Peat Soil</b>
+                <small style="color: #94a3b8; font-size: 0.8rem;">Reflects: <span style="color: #f87171; font-weight: 600;">ACIDIC (4.01 ± 0.02)</span></small>
+            </button>
+
+            <!-- Sample 2 Button -->
+            <button type="button" class="hw-sample-btn" data-code="S2" data-ph="6.86" data-quality="OPTIMAL"
+                style="display: flex; flex-direction: column; align-items: flex-start; padding: 16px; border-radius: 12px; border: 1.5px solid rgba(34, 197, 94, 0.4); background: rgba(34, 197, 94, 0.08); text-align: left; cursor: pointer; transition: all 0.2s ease; position: relative;">
+                <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 6px;">
+                    <span style="font-size: 0.75rem; font-weight: 700; color: #4ade80; text-transform: uppercase;">Sample 2 (Neutral)</span>
+                    <span style="font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: rgba(34,197,94,0.25); color: #86efac;">Target: 6.86 pH</span>
+                </div>
+                <b style="font-size: 1.05rem; color: #fff; margin-bottom: 2px;">Garden Loam Soil</b>
+                <small style="color: #94a3b8; font-size: 0.8rem;">Reflects: <span style="color: #4ade80; font-weight: 600;">OPTIMAL (6.86 ± 0.02)</span></small>
+            </button>
+
+            <!-- Sample 3 Button -->
+            <button type="button" class="hw-sample-btn" data-code="S3" data-ph="9.18" data-quality="ALKALINE"
+                style="display: flex; flex-direction: column; align-items: flex-start; padding: 16px; border-radius: 12px; border: 1.5px solid rgba(59, 130, 246, 0.4); background: rgba(59, 130, 246, 0.08); text-align: left; cursor: pointer; transition: all 0.2s ease; position: relative;">
+                <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 6px;">
+                    <span style="font-size: 0.75rem; font-weight: 700; color: #60a5fa; text-transform: uppercase;">Sample 3 (Alkaline)</span>
+                    <span style="font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: rgba(59,130,246,0.25); color: #93c5fd;">Target: 9.18 pH</span>
+                </div>
+                <b style="font-size: 1.05rem; color: #fff; margin-bottom: 2px;">Chalky Clay Soil</b>
+                <small style="color: #94a3b8; font-size: 0.8rem;">Reflects: <span style="color: #60a5fa; font-weight: 600;">ALKALINE (9.18 ± 0.02)</span></small>
+            </button>
+        </div>
+
+        <div id="hwSwitchAlert" style="display: none; margin-top: 14px; padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.3);"></div>
+    </section>
 
     <!-- Hardware Simulator & Telemetry Testing Console -->
     <section class="simulator-card">
@@ -449,6 +492,78 @@
                 }
             });
         }
+        // --- Hardware Soil Sample Remote Switcher Logic ---
+        const hwSampleBtns = document.querySelectorAll('.hw-sample-btn');
+        const activeSampleText = document.getElementById('currentActiveSampleText');
+        const hwSwitchAlert = document.getElementById('hwSwitchAlert');
+
+        function highlightActiveHwButton(activeCode) {
+            hwSampleBtns.forEach(btn => {
+                const code = btn.getAttribute('data-code');
+                if (code === activeCode) {
+                    btn.style.boxShadow = '0 0 0 2px #22c55e, 0 4px 12px rgba(34, 197, 94, 0.35)';
+                    btn.style.borderColor = '#22c55e';
+                } else {
+                    btn.style.boxShadow = 'none';
+                    btn.style.borderColor = btn.getAttribute('data-code') === 'S1' ? 'rgba(239,68,68,0.4)' : (btn.getAttribute('data-code') === 'S2' ? 'rgba(34,197,94,0.4)' : 'rgba(59,130,246,0.4)');
+                }
+            });
+        }
+
+        // Highlight initial active button
+        const initialActive = '{{ $activeSample['sample_code'] ?? 'S1' }}';
+        highlightActiveHwButton(initialActive);
+
+        hwSampleBtns.forEach(btn => {
+            btn.addEventListener('click', async function () {
+                const code = this.getAttribute('data-code');
+                const targetPh = this.getAttribute('data-ph');
+                const quality = this.getAttribute('data-quality');
+
+                // Visual button click feedback
+                this.style.opacity = '0.6';
+                if (hwSwitchAlert) {
+                    hwSwitchAlert.style.display = 'block';
+                    hwSwitchAlert.innerHTML = `<span>⏳ Dispatching command to ESP32 over WiFi...</span>`;
+                }
+
+                try {
+                    const res = await fetch('/api/v1/device/active-sample', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ sample_code: code })
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok && data.success) {
+                        highlightActiveHwButton(code);
+                        if (activeSampleText) {
+                            activeSampleText.textContent = `${data.active_sample.sample_code} (${data.active_sample.name})`;
+                        }
+                        if (hwSwitchAlert) {
+                            hwSwitchAlert.innerHTML = `<span style="display: flex; align-items: center; gap: 8px;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                <span><b>Command Dispatched to ESP32!</b> Active hardware target set to <b>${data.active_sample.name}</b> (Target: <b>${targetPh} pH</b> · <b>${quality}</b>). The physical 16x2 LCD screen will update now.</span>
+                            </span>`;
+                        }
+                    } else {
+                        if (hwSwitchAlert) {
+                            hwSwitchAlert.innerHTML = `<span style="color: #f87171;">⚠️ Failed to dispatch command: ${data.error || 'Server error'}</span>`;
+                        }
+                    }
+                } catch (e) {
+                    if (hwSwitchAlert) {
+                        hwSwitchAlert.innerHTML = `<span style="color: #f87171;">⚠️ Connection error: ${e.message}</span>`;
+                    }
+                } finally {
+                    this.style.opacity = '1';
+                }
+            });
+        });
     });
 </script>
 @endpush

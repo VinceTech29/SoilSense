@@ -114,6 +114,21 @@ class MobileApiTest extends TestCase
             ]);
     }
 
+    public function test_mobile_crop_detail_returns_crop_by_id(): void
+    {
+        $crop = CropProfile::first();
+        $response = $this->getJson('/api/v1/mobile/crops/' . $crop->id);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'id' => $crop->id,
+                    'name' => $crop->name,
+                ],
+            ]);
+    }
+
     public function test_mobile_samples_endpoint_returns_paginated_list(): void
     {
         $response = $this->getJson('/api/v1/mobile/samples');

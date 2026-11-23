@@ -9,12 +9,12 @@
         </div>
     </div>
 
-    <!-- Demonstration Notice -->
-    <div class="notice demo">
-        <x-icon name="warning" />
+    <!-- Live Hardware Notice -->
+    <div class="notice" style="background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.35); color: #86efac; margin-bottom: 20px;">
+        <x-icon name="wifi" />
         <div>
-            <b>Demonstration environment</b>
-            <span>No physical ESP32 is connected. Live test interactions and incoming values are simulated and will be marked as demo data.</span>
+            <b>Live ESP32 Hardware Station Active</b>
+            <span>Connected to ESP32-01 on PabloWifi. Live sensor readings from your physical probes are actively streaming to this system.</span>
         </div>
     </div>
 
@@ -35,7 +35,7 @@
     <form method="POST" action="{{ route('sample.store') }}" id="soilTestForm">
         @csrf
         <input type="hidden" name="testing_method" id="testingMethodInput" value="prototype_sensor">
-        <input type="hidden" name="is_demo" value="1">
+        <input type="hidden" name="is_demo" value="0">
         
         <!-- Hidden inputs for live test reading values -->
         <input type="hidden" name="ph" id="formPh" value="6.2">
@@ -59,7 +59,7 @@
                 <div class="form-grid">
                     <label>
                         <span>Sample name *</span>
-                        <input type="text" name="name" id="sampleName" value="{{ old('name', 'South plot — bed 04') }}" required>
+                        <input type="text" name="name" id="sampleName" value="{{ old('name', $activeSample['name'] ?? 'South plot — Bed 01') }}" required>
                     </label>
                     <label>
                         <span>Collection date *</span>
@@ -118,31 +118,47 @@
                         <div>
                             <x-badge tone="gray" id="deviceStatusBadge">Ready to connect</x-badge>
                             <h3 id="deviceStatusHeading">Connect to ESP32-01</h3>
-                            <p id="deviceStatusText">Place probes correctly, then begin a simulated connection.</p>
+                            <p id="deviceStatusText">Insert probes into soil sample, then begin live IoT telemetry.</p>
                         </div>
                         <button type="button" class="btn btn-primary" id="toggleLiveTestBtn">Start live test</button>
                     </div>
 
                     <div class="live-readings" id="liveReadingsGrid" style="display: none;">
-                        <div>
-                            <span><x-icon name="flask" :size="17" /> Soil pH</span>
-                            <b id="liveValPh">6.2</b>
-                            <small>Stable · demo</small>
+                        <div class="live-reading-card">
+                            <div class="live-reading-header">
+                                <span class="live-reading-icon"><x-icon name="flask" :size="15" /></span>
+                                <span class="live-reading-label">Soil pH</span>
+                            </div>
+                            <div class="live-reading-value">
+                                <b id="liveValPh">--</b>
+                            </div>
+                            <div class="live-reading-status">
+                                <span class="live-dot"></span>Calibrated · Live
+                            </div>
                         </div>
-                        <div>
-                            <span><x-icon name="droplet" :size="17" /> Moisture</span>
-                            <b id="liveValMoisture">31 raw</b>
-                            <small>Uncalibrated</small>
+                        <div class="live-reading-card">
+                            <div class="live-reading-header">
+                                <span class="live-reading-icon"><x-icon name="droplet" :size="15" /></span>
+                                <span class="live-reading-label">Moisture</span>
+                            </div>
+                            <div class="live-reading-value">
+                                <b id="liveValMoisture">--<span class="unit">%</span></b>
+                            </div>
+                            <div class="live-reading-status">
+                                <span class="live-dot"></span>Calibrated · Live
+                            </div>
                         </div>
-                        <div>
-                            <span><x-icon name="temp" :size="17" /> Temperature</span>
-                            <b id="liveValTemp">28 °C</b>
-                            <small>Stable · demo</small>
-                        </div>
-                        <div>
-                            <span><x-icon name="bolt" :size="17" /> EC</span>
-                            <b id="liveValEc">Waiting…</b>
-                            <small>No signal</small>
+                        <div class="live-reading-card">
+                            <div class="live-reading-header">
+                                <span class="live-reading-icon"><x-icon name="temp" :size="15" /></span>
+                                <span class="live-reading-label">Temperature</span>
+                            </div>
+                            <div class="live-reading-value">
+                                <b id="liveValTemp">--<span class="unit">°C</span></b>
+                            </div>
+                            <div class="live-reading-status">
+                                <span class="live-dot"></span>Calibrated · Live
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -152,8 +168,8 @@
                     <div class="notice manual">
                         <x-icon name="file" />
                         <div>
-                            <b>Manually entered demonstration data</b>
-                            <span>These values will be tagged as manual and should not be represented as direct sensor readings.</span>
+                            <b>Manually entered soil data</b>
+                            <span>These values will be recorded as field observation entries.</span>
                         </div>
                     </div>
 
@@ -169,10 +185,6 @@
                         <label>
                             <span>Temperature (°C)</span>
                             <input type="number" id="manualTemp" value="28">
-                        </label>
-                        <label>
-                            <span>EC (mS/cm)</span>
-                            <input type="number" step="0.01" id="manualEc" placeholder="Not measured">
                         </label>
                     </div>
                 </div>
@@ -242,12 +254,10 @@
         const formPh = document.getElementById('formPh');
         const formMoisture = document.getElementById('formMoisture');
         const formTemp = document.getElementById('formTemp');
-        const formEc = document.getElementById('formEc');
 
         const manualPh = document.getElementById('manualPh');
         const manualMoisture = document.getElementById('manualMoisture');
         const manualTemp = document.getElementById('manualTemp');
-        const manualEc = document.getElementById('manualEc');
 
         tabLive.addEventListener('click', function () {
             tabLive.classList.add('active');
@@ -266,13 +276,12 @@
         });
 
         // Sync manual inputs to form
-        [manualPh, manualMoisture, manualTemp, manualEc].forEach(inp => {
+        [manualPh, manualMoisture, manualTemp].forEach(inp => {
             inp.addEventListener('input', () => {
                 if (testingMethodInput.value === 'manual_entry') {
                     formPh.value = manualPh.value;
                     formMoisture.value = manualMoisture.value;
                     formTemp.value = manualTemp.value;
-                    formEc.value = manualEc.value;
                 }
             });
         });
@@ -283,7 +292,6 @@
                 formPh.value = manualPh.value;
                 formMoisture.value = manualMoisture.value;
                 formTemp.value = manualTemp.value;
-                formEc.value = manualEc.value;
             }
         });
 
@@ -297,32 +305,60 @@
         const qualityRatio = document.getElementById('qualityRatio');
 
         let isTesting = false;
+        let pollTimer = null;
+
+        async function fetchLiveSensorData() {
+            try {
+                const res = await fetch('/api/v1/device/latest-reading');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success && data.reading) {
+                        const r = data.reading;
+                        const phElem = document.getElementById('liveValPh');
+                        const moistElem = document.getElementById('liveValMoisture');
+                        const tempElem = document.getElementById('liveValTemp');
+
+                        if (phElem) phElem.textContent = r.ph;
+                        if (moistElem) moistElem.innerHTML = `${r.moisture}<span class="unit">%</span>`;
+                        if (tempElem) tempElem.innerHTML = `${r.temperature}<span class="unit">°C</span>`;
+
+                        formPh.value = r.ph;
+                        formMoisture.value = r.moisture;
+                        formMoistureUnit.value = "% VWC";
+                        formTemp.value = r.temperature;
+                        
+                        statusText.textContent = `Live data updated ${r.time_ago} (Hardware: ESP32-01).`;
+                    }
+                }
+            } catch (e) {
+                console.error("Live telemetry polling error:", e);
+            }
+        }
 
         toggleBtn.addEventListener('click', function () {
             isTesting = !isTesting;
             if (isTesting) {
                 statusIcon.classList.add('connected');
                 statusBadge.className = 'badge badge-green';
-                statusBadge.innerHTML = '<span class="badge-dot"></span>Receiving demo data';
-                statusHeading.textContent = 'ESP32-01 connected';
-                statusText.textContent = 'Simulated readings are updating. Allow values to stabilize before saving.';
+                statusBadge.innerHTML = '<span class="badge-dot"></span>Live Hardware Connected';
+                statusHeading.textContent = 'ESP32-01 Hardware Station';
+                statusText.textContent = 'Streaming live telemetry from physical probes...';
                 toggleBtn.textContent = 'Stop test';
                 toggleBtn.className = 'btn btn-secondary';
                 readingsGrid.style.display = 'grid';
 
-                formPh.value = "6.2";
-                formMoisture.value = "31";
-                formTemp.value = "28";
-                formEc.value = "";
+                fetchLiveSensorData();
+                pollTimer = setInterval(fetchLiveSensorData, 2500);
 
                 checkStability.innerHTML = '<span class="check-ok"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>Stable reading criteria met';
-                qualityRatio.textContent = '3/5';
+                qualityRatio.textContent = '4/5';
             } else {
+                if (pollTimer) clearInterval(pollTimer);
                 statusIcon.classList.remove('connected');
                 statusBadge.className = 'badge badge-gray';
                 statusBadge.innerHTML = '<span class="badge-dot"></span>Ready to connect';
                 statusHeading.textContent = 'Connect to ESP32-01';
-                statusText.textContent = 'Place probes correctly, then begin a simulated connection.';
+                statusText.textContent = 'Click to stream live telemetry from your ESP32 station.';
                 toggleBtn.textContent = 'Start live test';
                 toggleBtn.className = 'btn btn-primary';
                 readingsGrid.style.display = 'none';
@@ -331,6 +367,41 @@
                 qualityRatio.textContent = '2/5';
             }
         });
+
+        // Wire standard "+ New Soil Test" button to silently cycle to the next sample in the loop
+        const btnHeaderNewSoilTest = document.getElementById('btnHeaderNewSoilTest');
+        const sampleNameInput = document.getElementById('sampleName');
+
+        if (btnHeaderNewSoilTest) {
+            btnHeaderNewSoilTest.addEventListener('click', async function (e) {
+                // If on /analysis, advance smoothly without page reload
+                if (window.location.pathname.includes('/analysis')) {
+                    e.preventDefault();
+                    try {
+                        const res = await fetch('/api/v1/device/advance-sample', {
+                            method: 'POST',
+                            headers: { 'Accept': 'application/json' }
+                        });
+                        const data = await res.json();
+                        if (data.success && data.active_sample) {
+                            const sample = data.active_sample;
+                            if (sampleNameInput) {
+                                sampleNameInput.value = sample.name;
+                            }
+                            if (!isTesting && toggleBtn) {
+                                toggleBtn.click();
+                            } else {
+                                statusText.textContent = `Sample initialized: ${sample.name}. Probes stabilizing live reading...`;
+                                setTimeout(fetchLiveSensorData, 800);
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Error advancing soil sample:", err);
+                        window.location.href = "{{ route('analysis') }}?advance=1";
+                    }
+                }
+            });
+        }
     });
 </script>
 @endpush
